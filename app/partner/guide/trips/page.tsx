@@ -36,6 +36,13 @@ type PartnerRequest = {
   respondedAt?: string;
 };
 
+type GuideOperationalStatus =
+  | "Accepted"
+  | "On the way"
+  | "Arrived"
+  | "Tour started"
+  | "Completed";
+
 type Trip = {
   id: string;
   userId?: string;
@@ -94,13 +101,13 @@ type Trip = {
   createdAt?: string;
 };
 
-const statusSteps = [
+const statusSteps: GuideOperationalStatus[] = [
   "Accepted",
   "On the way",
   "Arrived",
   "Tour started",
   "Completed",
-] as const;
+];
 
 function getGuideRequest(
   trip: Trip,
@@ -200,7 +207,7 @@ function GuideTripsContent() {
         const parsedTrips: Trip[] =
           JSON.parse(storedTrips);
 
-        const guideTrips = parsedTrips
+        const guideTrips: Trip[] = parsedTrips
           .filter((trip) => {
             const request = getGuideRequest(
               trip,
@@ -329,13 +336,21 @@ function GuideTripsContent() {
   ) => {
     if (!status) return 0;
 
-    const normalizedStatus =
+    const normalizedStatus: GuideOperationalStatus =
       status === "accepted"
         ? "Accepted"
-        : status;
+        : status === "On the way"
+        ? "On the way"
+        : status === "Arrived"
+        ? "Arrived"
+        : status === "Tour started"
+        ? "Tour started"
+        : status === "Completed"
+        ? "Completed"
+        : "Accepted";
 
     const index = statusSteps.indexOf(
-      normalizedStatus as (typeof statusSteps)[number]
+      normalizedStatus
     );
 
     return index >= 0 ? index : 0;
@@ -366,7 +381,7 @@ function GuideTripsContent() {
 
   const handleRequestResponse = (
     tripId: string,
-    response: "accepted" | "declined"
+    response: RequestStatus
   ) => {
     if (!guide) return;
 
@@ -390,8 +405,8 @@ function GuideTripsContent() {
 
       const now = new Date().toISOString();
 
-      const updatedTrips = allTrips.map(
-        (trip) => {
+      const updatedTrips: Trip[] =
+        allTrips.map((trip): Trip => {
           if (trip.id !== tripId) {
             return trip;
           }
@@ -409,9 +424,9 @@ function GuideTripsContent() {
             return trip;
           }
 
-          const updatedRequests =
+          const updatedRequests: PartnerRequest[] =
             existingRequests.map(
-              (request) => {
+              (request): PartnerRequest => {
                 if (
                   request.partnerId !== guide.id
                 ) {
@@ -436,13 +451,6 @@ function GuideTripsContent() {
             };
           }
 
-          /*
-           * Jika guide menolak:
-           * - Jangan mengambil alih guide lain.
-           * - Jangan menghapus guideId milik guide lain.
-           * - Jika guide ini sebelumnya memang pemegang trip,
-           *   lepaskan assignment-nya.
-           */
           const currentGuideOwnsTrip =
             trip.guideId === guide.id;
 
@@ -457,15 +465,14 @@ function GuideTripsContent() {
               ? "declined"
               : trip.guideStatus,
           };
-        }
-      );
+        });
 
       localStorage.setItem(
         "funtravel_trips",
         JSON.stringify(updatedTrips)
       );
 
-      const updatedGuideTrips =
+      const updatedGuideTrips: Trip[] =
         updatedTrips
           .filter((trip) => {
             const request =
@@ -533,7 +540,7 @@ function GuideTripsContent() {
 
   const updateStatus = (
     tripId: string,
-    status: (typeof statusSteps)[number]
+    status: GuideOperationalStatus
   ) => {
     if (!guide) return;
 
@@ -553,10 +560,6 @@ function GuideTripsContent() {
       guide.id
     );
 
-    /*
-     * Status operasional hanya boleh dilakukan
-     * oleh guide yang sudah menerima request.
-     */
     const isAccepted =
       request?.status === "accepted" &&
       currentTrip.guideId === guide.id;
@@ -587,23 +590,28 @@ function GuideTripsContent() {
       const allTrips: Trip[] =
         JSON.parse(storedTrips);
 
-      const updatedTrips = allTrips.map(
-        (trip) =>
-          trip.id === tripId
-            ? {
-                ...trip,
-                guideId: guide.id,
-                guideStatus: status,
-              }
-            : trip
-      );
+      const updatedTrips: Trip[] =
+        allTrips.map((trip): Trip => {
+          if (trip.id !== tripId) {
+            return trip;
+          }
+
+          return {
+            ...trip,
+            guideId: guide.id,
+            guideStatus:
+              status === "Accepted"
+                ? "accepted"
+                : status,
+          };
+        });
 
       localStorage.setItem(
         "funtravel_trips",
         JSON.stringify(updatedTrips)
       );
 
-      const updatedGuideTrips =
+      const updatedGuideTrips: Trip[] =
         updatedTrips
           .filter((trip) => {
             const request =
@@ -701,7 +709,6 @@ function GuideTripsContent() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      {/* Header */}
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <Link
@@ -750,7 +757,6 @@ function GuideTripsContent() {
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* Heading */}
         <div className="mb-8">
           <p className="text-xs font-bold uppercase tracking-widest text-blue-600">
             Guide Partner
@@ -767,7 +773,6 @@ function GuideTripsContent() {
           </p>
         </div>
 
-        {/* Message */}
         {message && (
           <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-4">
             <p className="text-sm font-semibold text-blue-700">
@@ -776,7 +781,6 @@ function GuideTripsContent() {
           </div>
         )}
 
-        {/* Stats */}
         <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
@@ -819,7 +823,6 @@ function GuideTripsContent() {
           </div>
         </div>
 
-        {/* New Request Notice */}
         {pendingRequests.length > 0 && (
           <div className="mb-8 rounded-3xl border-2 border-orange-200 bg-orange-50 p-5 sm:p-6">
             <div className="flex items-start gap-4">
@@ -850,7 +853,6 @@ function GuideTripsContent() {
           </div>
         )}
 
-        {/* Assignment list */}
         <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 p-5 sm:p-6">
             <h3 className="text-lg font-black text-slate-900">
@@ -897,8 +899,7 @@ function GuideTripsContent() {
                   request?.status === "accepted" &&
                   trip.guideId === guide.id;
 
-                let displayStatus =
-                  "Accepted";
+                let displayStatus = "Accepted";
 
                 if (isPending) {
                   displayStatus = "New Request";
@@ -1012,7 +1013,6 @@ function GuideTripsContent() {
           )}
         </section>
 
-        {/* Declined summary */}
         {declinedTrips.length > 0 && (
           <div className="mt-6 rounded-2xl border border-red-100 bg-red-50 p-4">
             <p className="text-xs font-semibold text-red-700">
@@ -1026,7 +1026,6 @@ function GuideTripsContent() {
         )}
       </div>
 
-      {/* Detail Modal */}
       {selectedTrip && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
@@ -1038,7 +1037,6 @@ function GuideTripsContent() {
               e.stopPropagation()
             }
           >
-            {/* Modal Header */}
             <div className="sticky top-0 z-10 border-b border-slate-100 bg-white p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1065,7 +1063,6 @@ function GuideTripsContent() {
                 </button>
               </div>
 
-              {/* Request State */}
               {(() => {
                 const request =
                   getGuideRequest(
@@ -1219,7 +1216,6 @@ function GuideTripsContent() {
             </div>
 
             <div className="space-y-6 p-5 sm:p-6">
-              {/* Guest Information */}
               <div>
                 <h4 className="mb-3 text-sm font-black uppercase tracking-wide text-slate-400">
                   Guest Information
@@ -1266,7 +1262,6 @@ function GuideTripsContent() {
                 </div>
               </div>
 
-              {/* Trip Schedule */}
               <div>
                 <h4 className="mb-3 text-sm font-black uppercase tracking-wide text-slate-400">
                   Trip Schedule
@@ -1306,7 +1301,6 @@ function GuideTripsContent() {
                 </div>
               </div>
 
-              {/* Flight */}
               {selectedTrip.hasFlight && (
                 <div>
                   <h4 className="mb-3 text-sm font-black uppercase tracking-wide text-slate-400">
@@ -1363,7 +1357,6 @@ function GuideTripsContent() {
                 </div>
               )}
 
-              {/* Accommodation */}
               <div>
                 <h4 className="mb-3 text-sm font-black uppercase tracking-wide text-slate-400">
                   Accommodation
@@ -1404,7 +1397,6 @@ function GuideTripsContent() {
                 </div>
               </div>
 
-              {/* Guide Instructions */}
               <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
                 <div className="flex items-start gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-xl shadow-sm">
@@ -1446,7 +1438,6 @@ function GuideTripsContent() {
                 </div>
               </div>
 
-              {/* Status Controls */}
               {(() => {
                 const request =
                   getGuideRequest(
@@ -1473,11 +1464,23 @@ function GuideTripsContent() {
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                       {statusSteps.map(
                         (status) => {
-                          const normalizedCurrent =
+                          const normalizedCurrent: GuideOperationalStatus =
                             selectedTrip.guideStatus ===
                             "accepted"
                               ? "Accepted"
-                              : selectedTrip.guideStatus;
+                              : selectedTrip.guideStatus ===
+                                "On the way"
+                              ? "On the way"
+                              : selectedTrip.guideStatus ===
+                                "Arrived"
+                              ? "Arrived"
+                              : selectedTrip.guideStatus ===
+                                "Tour started"
+                              ? "Tour started"
+                              : selectedTrip.guideStatus ===
+                                "Completed"
+                              ? "Completed"
+                              : "Accepted";
 
                           const isActive =
                             normalizedCurrent ===
@@ -1513,7 +1516,6 @@ function GuideTripsContent() {
                 );
               })()}
 
-              {/* Footer */}
               <div className="border-t border-slate-100 pt-5">
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <button
