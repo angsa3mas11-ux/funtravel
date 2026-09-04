@@ -2,13 +2,22 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import React, { useEffect, useState } from "react";
-import Navbar from "@/components/Navbar";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import Navbar from "../../components/Navbar";
+import CustomerService from "../../components/CustomerService";
 
 type User = {
   id: string;
   name: string;
   email: string;
+};
+
+type RequestStatus = "pending" | "accepted" | "declined";
+
+type PartnerRequest = {
+  partnerId: string;
+  status: RequestStatus;
+  respondedAt?: string;
 };
 
 type Trip = {
@@ -23,6 +32,93 @@ type Trip = {
   interests: string;
   travelStyle: string;
   specialRequest: string;
+  createdAt: string;
+
+  hasFlight?: string;
+
+  arrivalFlight?: string;
+  arrivalDate?: string;
+  arrivalTime?: string;
+
+  departureFlight?: string;
+  departureDate?: string;
+  departureTime?: string;
+
+  airportPickup?: string;
+
+  accommodationType?: string;
+  hotelName?: string;
+  hotelAddress?: string;
+  bookingNumber?: string;
+
+  guideRequired?: boolean;
+
+  driverRequests?: PartnerRequest[];
+  guideRequests?: PartnerRequest[];
+
+  driverId?: string;
+  driverName?: string;
+  driverPhoto?: string;
+  driverPhone?: string;
+  driverWhatsapp?: string;
+  driverRating?: string;
+  vehicle?: string;
+  plateNumber?: string;
+  meetingPoint?: string;
+
+  driverStatus?:
+    | "pending"
+    | "accepted"
+    | "declined"
+    | "Assigned"
+    | "On the way"
+    | "Arrived"
+    | "Guest picked up"
+    | "Completed";
+
+  guideId?: string;
+
+  guideStatus?:
+    | "pending"
+    | "accepted"
+    | "declined"
+    | "Assigned"
+    | "On the way"
+    | "Arrived"
+    | "Tour started"
+    | "Completed";
+};
+
+type Driver = {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+  whatsapp: string;
+  address: string;
+  vehicleType: string;
+  vehicleModel: string;
+  vehiclePlate: string;
+  experience: string;
+  languages: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+};
+
+type Guide = {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+  whatsapp: string;
+  address: string;
+  experience: string;
+  languages: string;
+  specialties: string;
+  areas: string;
+  status: "pending" | "approved" | "rejected";
   createdAt: string;
 };
 
@@ -52,840 +148,811 @@ function TripContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  const tripId = searchParams.get("tripId") || "";
+
   const [user, setUser] = useState<User | null>(null);
   const [saved, setSaved] = useState(false);
-  const [checkingLogin, setCheckingLogin] = useState(true);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [destinationImage, setDestinationImage] =
-    useState<string | null>(null);
-  const [loadingImage, setLoadingImage] = useState(true);
-  const [pageLoaded, setPageLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const [destinationPhoto, setDestinationPhoto] =
+    useState<DestinationPhoto | null>(null);
+
   const [dayPhotos, setDayPhotos] = useState<DayPhotos>({});
-  const [loadingPhotos, setLoadingPhotos] =
-    useState<Record<number, boolean>>({});
-  const [activePhoto, setActivePhoto] =
-    useState<Record<number, number>>({});
+
+  const [activeGallery, setActiveGallery] = useState<DestinationPhoto[]>([]);
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [galleryOpen, setGalleryOpen] = useState(false);
-  const [galleryDay, setGalleryDay] = useState<number | null>(null);
-  const [galleryIndex, setGalleryIndex] = useState(0);
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  // =========================================================
+  // ASSIGNED DRIVER & GUIDE
+  // =========================================================
+
+  const [assignedDriver, setAssignedDriver] =
+    useState<Driver | null>(null);
+
+  const [assignedGuide, setAssignedGuide] =
+    useState<Guide | null>(null);
+
+  const [currentDriverStatus, setCurrentDriverStatus] =
+    useState<Trip["driverStatus"]>();
+
+  const [currentGuideStatus, setCurrentGuideStatus] =
+    useState<Trip["guideStatus"]>();
+
+  // =========================================================
+  // READ URL DATA
+  // =========================================================
 
   const destination =
-    searchParams.get("destination") || "Your Destination";
+    searchParams.get("destination") || "Lombok, Indonesia";
 
   const startDate = searchParams.get("startDate") || "";
   const endDate = searchParams.get("endDate") || "";
-  const budget = searchParams.get("budget") || "Comfort";
 
-  const travelers =
-    searchParams.get("travelers") || "2 Travelers";
-
+  const travelers = searchParams.get("travelers") || "1";
+  const budget = searchParams.get("budget") || "";
   const interests = searchParams.get("interests") || "";
-  const travelStyle =
-    searchParams.get("travelStyle") || "Balanced";
+  const travelStyle = searchParams.get("travelStyle") || "";
+  const specialRequest = searchParams.get("specialRequest") || "";
 
-  const specialRequest =
-    searchParams.get("specialRequest") || "";
+  const hasFlight = searchParams.get("hasFlight") === "true";
 
-  // ==========================================
-  // LOGIN CHECK
-  // ==========================================
+  const arrivalFlight = searchParams.get("arrivalFlight") || "";
+  const arrivalDate = searchParams.get("arrivalDate") || "";
+  const arrivalTime = searchParams.get("arrivalTime") || "";
+
+  const departureFlight = searchParams.get("departureFlight") || "";
+  const departureDate = searchParams.get("departureDate") || "";
+  const departureTime = searchParams.get("departureTime") || "";
+
+  const airportPickup = searchParams.get("airportPickup") || "";
+
+  const accommodationType =
+    searchParams.get("accommodationType") || "";
+
+  const hotelName = searchParams.get("hotelName") || "";
+  const hotelAddress = searchParams.get("hotelAddress") || "";
+  const bookingNumber = searchParams.get("bookingNumber") || "";
+
+  const guideRequired =
+    searchParams.get("guideRequired") === "true" ||
+    searchParams.get("needsGuide") === "true" ||
+    searchParams.get("guide") === "true";
+
+  const driverId = searchParams.get("driverId") || "";
+  const driverName = searchParams.get("driverName") || "";
+  const driverPhoto = searchParams.get("driverPhoto") || "";
+  const driverPhone = searchParams.get("driverPhone") || "";
+  const driverWhatsapp = searchParams.get("driverWhatsapp") || "";
+  const driverRating = searchParams.get("driverRating") || "";
+  const vehicle = searchParams.get("vehicle") || "";
+  const plateNumber = searchParams.get("plateNumber") || "";
+  const meetingPoint = searchParams.get("meetingPoint") || "";
+
+  // =========================================================
+  // AUTH
+  // =========================================================
 
   useEffect(() => {
-    const loggedIn =
-      localStorage.getItem("funtravel_logged_in");
+    const loggedIn = localStorage.getItem("funtravel_logged_in");
+    const currentUser = localStorage.getItem("funtravel_current_user");
 
-    if (loggedIn !== "true") {
-      router.push("/login");
-      return;
-    }
-
-    const savedUser =
-      localStorage.getItem("funtravel_current_user");
-
-    if (!savedUser) {
+    if (loggedIn !== "true" || !currentUser) {
       router.push("/login");
       return;
     }
 
     try {
-      const parsedUser = JSON.parse(savedUser);
+      const parsedUser = JSON.parse(currentUser);
 
-      if (!parsedUser.id || !parsedUser.email) {
-        localStorage.removeItem("funtravel_current_user");
-        localStorage.removeItem("funtravel_logged_in");
-
-        router.push("/login");
-        return;
+      if (!parsedUser?.id || !parsedUser?.email) {
+        throw new Error("Invalid user");
       }
 
       setUser(parsedUser);
+      setLoading(false);
     } catch {
-      localStorage.removeItem("funtravel_current_user");
       localStorage.removeItem("funtravel_logged_in");
-
+      localStorage.removeItem("funtravel_current_user");
       router.push("/login");
-      return;
     }
-
-    setCheckingLogin(false);
   }, [router]);
 
-  // ==========================================
-  // PAGE LOAD ANIMATION
-  // ==========================================
+  // =========================================================
+  // DATE HELPERS
+  // =========================================================
+
+  const formatDate = (value: string) => {
+    if (!value) return "-";
+
+    const date = new Date(`${value}T00:00:00`);
+
+    if (Number.isNaN(date.getTime())) return value;
+
+    return date.toLocaleDateString("en-US", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  const formatShortDate = (value: string) => {
+    if (!value) return "-";
+
+    const date = new Date(`${value}T00:00:00`);
+
+    if (Number.isNaN(date.getTime())) return value;
+
+    return date.toLocaleDateString("en-US", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  const totalDays = useMemo(() => {
+    if (!startDate || !endDate) return 1;
+
+    const start = new Date(`${startDate}T00:00:00`);
+    const end = new Date(`${endDate}T00:00:00`);
+
+    const difference = end.getTime() - start.getTime();
+
+    return Math.max(
+      1,
+      Math.ceil(difference / (1000 * 60 * 60 * 24)) + 1
+    );
+  }, [startDate, endDate]);
+
+  // =========================================================
+  // SAVE TRIP + AUTOMATIC PARTNER REQUESTS
+  // =========================================================
 
   useEffect(() => {
-    if (!checkingLogin) {
-      const timer = setTimeout(() => {
-        setPageLoaded(true);
-      }, 100);
+    if (!user) return;
 
-      return () => clearTimeout(timer);
-    }
-  }, [checkingLogin]);
+    const currentTripId =
+      tripId ||
+      `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-  // ==========================================
-  // MAIN DESTINATION IMAGE
-  // ==========================================
+    try {
+      const stored = localStorage.getItem("funtravel_trips");
 
-  useEffect(() => {
-    async function loadImage() {
-      setLoadingImage(true);
+      let trips: Trip[] = [];
+
+      if (stored) {
+        const parsed = JSON.parse(stored);
+
+        if (Array.isArray(parsed)) {
+          trips = parsed;
+        }
+      }
+
+      const existingIndex = trips.findIndex(
+        (item) => item.id === currentTripId
+      );
+
+      const existingTrip =
+        existingIndex >= 0 ? trips[existingIndex] : undefined;
+
+      // =====================================================
+      // LOAD APPROVED DRIVERS
+      // =====================================================
+
+      let approvedDrivers: Driver[] = [];
 
       try {
-        const searchQuery =
-          encodeURIComponent(destination);
+        const storedDrivers =
+          localStorage.getItem("funtravel_drivers");
 
-        const url =
-          `https://commons.wikimedia.org/w/api.php` +
-          `?action=query` +
-          `&generator=search` +
-          `&gsrsearch=${searchQuery}` +
-          `&gsrnamespace=6` +
-          `&gsrlimit=15` +
-          `&prop=imageinfo` +
-          `&iiprop=url` +
-          `&iiurlwidth=1400` +
-          `&format=json` +
-          `&origin=*`;
+        if (storedDrivers) {
+          const parsedDrivers = JSON.parse(storedDrivers);
 
-        const response = await fetch(url);
+          if (Array.isArray(parsedDrivers)) {
+            approvedDrivers = parsedDrivers.filter(
+              (driver: Driver) =>
+                driver.status === "approved"
+            );
+          }
+        }
+      } catch {
+        approvedDrivers = [];
+      }
 
-        if (!response.ok) {
-          setDestinationImage(null);
+      // =====================================================
+      // LOAD APPROVED GUIDES
+      // =====================================================
+
+      let approvedGuides: Guide[] = [];
+
+      try {
+        const storedGuides =
+          localStorage.getItem("funtravel_guides");
+
+        if (storedGuides) {
+          const parsedGuides = JSON.parse(storedGuides);
+
+          if (Array.isArray(parsedGuides)) {
+            approvedGuides = parsedGuides.filter(
+              (guide: Guide) =>
+                guide.status === "approved"
+            );
+          }
+        }
+      } catch {
+        approvedGuides = [];
+      }
+
+      // =====================================================
+      // DRIVER REQUESTS
+      // =====================================================
+
+      let driverRequests: PartnerRequest[] =
+        existingTrip?.driverRequests || [];
+
+      if (airportPickup === "funtravel") {
+        const existingDriverIds = new Set(
+          driverRequests.map(
+            (request) => request.partnerId
+          )
+        );
+
+        const newDriverRequests =
+          approvedDrivers
+            .filter(
+              (driver) =>
+                !existingDriverIds.has(driver.id)
+            )
+            .map((driver) => ({
+              partnerId: driver.id,
+              status: "pending" as RequestStatus,
+            }));
+
+        driverRequests = [
+          ...driverRequests,
+          ...newDriverRequests,
+        ];
+      } else {
+        driverRequests = [];
+      }
+
+      // =====================================================
+      // GUIDE REQUESTS
+      // =====================================================
+
+      let guideRequests: PartnerRequest[] =
+        existingTrip?.guideRequests || [];
+
+      if (guideRequired) {
+        const existingGuideIds = new Set(
+          guideRequests.map(
+            (request) => request.partnerId
+          )
+        );
+
+        const newGuideRequests =
+          approvedGuides
+            .filter(
+              (guide) =>
+                !existingGuideIds.has(guide.id)
+            )
+            .map((guide) => ({
+              partnerId: guide.id,
+              status: "pending" as RequestStatus,
+            }));
+
+        guideRequests = [
+          ...guideRequests,
+          ...newGuideRequests,
+        ];
+      } else {
+        guideRequests = [];
+      }
+
+      // =====================================================
+      // PRESERVE EXISTING PARTNER DATA
+      // =====================================================
+
+      const trip: Trip = {
+        ...(existingTrip || {}),
+
+        id: currentTripId,
+
+        userId: user.id,
+        userEmail: user.email,
+
+        destination,
+        startDate,
+        endDate,
+        travelers,
+        budget,
+        interests,
+        travelStyle,
+        specialRequest,
+
+        createdAt:
+          existingTrip?.createdAt ||
+          new Date().toISOString(),
+
+        hasFlight: String(hasFlight),
+
+        arrivalFlight,
+        arrivalDate,
+        arrivalTime,
+
+        departureFlight,
+        departureDate,
+        departureTime,
+
+        airportPickup,
+
+        accommodationType,
+        hotelName,
+        hotelAddress,
+        bookingNumber,
+
+        guideRequired,
+
+        driverRequests,
+        guideRequests,
+
+        driverId:
+          existingTrip?.driverId || driverId || undefined,
+
+        driverName:
+          existingTrip?.driverName || driverName || undefined,
+
+        driverPhoto:
+          existingTrip?.driverPhoto || driverPhoto || undefined,
+
+        driverPhone:
+          existingTrip?.driverPhone || driverPhone || undefined,
+
+        driverWhatsapp:
+          existingTrip?.driverWhatsapp ||
+          driverWhatsapp ||
+          undefined,
+
+        driverRating:
+          existingTrip?.driverRating ||
+          driverRating ||
+          undefined,
+
+        vehicle:
+          existingTrip?.vehicle || vehicle || undefined,
+
+        plateNumber:
+          existingTrip?.plateNumber ||
+          plateNumber ||
+          undefined,
+
+        meetingPoint:
+          existingTrip?.meetingPoint ||
+          meetingPoint ||
+          undefined,
+
+        driverStatus:
+          existingTrip?.driverStatus ||
+          (airportPickup === "funtravel"
+            ? "pending"
+            : undefined),
+
+        guideId:
+          existingTrip?.guideId || undefined,
+
+        guideStatus:
+          existingTrip?.guideStatus ||
+          (guideRequired ? "pending" : undefined),
+      };
+
+      if (existingIndex >= 0) {
+        trips[existingIndex] = trip;
+      } else {
+        trips.push(trip);
+      }
+
+      localStorage.setItem(
+        "funtravel_trips",
+        JSON.stringify(trips)
+      );
+
+      setSaved(true);
+    } catch {
+      setSaved(false);
+    }
+  }, [
+    user,
+    tripId,
+    destination,
+    startDate,
+    endDate,
+    travelers,
+    budget,
+    interests,
+    travelStyle,
+    specialRequest,
+    hasFlight,
+    arrivalFlight,
+    arrivalDate,
+    arrivalTime,
+    departureFlight,
+    departureDate,
+    departureTime,
+    airportPickup,
+    accommodationType,
+    hotelName,
+    hotelAddress,
+    bookingNumber,
+    guideRequired,
+    driverId,
+    driverName,
+    driverPhoto,
+    driverPhone,
+    driverWhatsapp,
+    driverRating,
+    vehicle,
+    plateNumber,
+    meetingPoint,
+  ]);
+
+  // =========================================================
+  // LOAD ASSIGNED DRIVER & GUIDE DETAILS
+  // =========================================================
+
+  useEffect(() => {
+    if (!user) return;
+
+    const loadAssignedPartners = () => {
+      try {
+        const storedTrips =
+          localStorage.getItem("funtravel_trips");
+
+        if (!storedTrips) {
+          setAssignedDriver(null);
+          setAssignedGuide(null);
           return;
         }
+
+        const trips: Trip[] = JSON.parse(storedTrips);
+
+        if (!Array.isArray(trips)) {
+          return;
+        }
+
+        let currentTrip: Trip | undefined;
+
+        // Prioritas pertama: tripId
+        if (tripId) {
+          currentTrip = trips.find(
+            (trip) => trip.id === tripId
+          );
+        }
+
+        // Fallback jika tripId tidak tersedia
+        if (!currentTrip) {
+          currentTrip = trips.find(
+            (trip) =>
+              trip.userEmail === user.email &&
+              trip.destination === destination &&
+              trip.startDate === startDate &&
+              trip.endDate === endDate
+          );
+        }
+
+        if (!currentTrip) {
+          setAssignedDriver(null);
+          setAssignedGuide(null);
+          return;
+        }
+
+        // ===================================================
+        // DRIVER STATUS
+        // ===================================================
+
+        setCurrentDriverStatus(
+          currentTrip.driverStatus
+        );
+
+        // ===================================================
+        // FIND ASSIGNED DRIVER
+        // ===================================================
+
+        if (currentTrip.driverId) {
+          const storedDrivers =
+            localStorage.getItem("funtravel_drivers");
+
+          if (storedDrivers) {
+            const drivers: Driver[] =
+              JSON.parse(storedDrivers);
+
+            if (Array.isArray(drivers)) {
+              const driver = drivers.find(
+                (item) =>
+                  item.id === currentTrip?.driverId &&
+                  item.status === "approved"
+              );
+
+              setAssignedDriver(driver || null);
+            }
+          }
+        } else {
+          setAssignedDriver(null);
+        }
+
+        // ===================================================
+        // GUIDE STATUS
+        // ===================================================
+
+        setCurrentGuideStatus(
+          currentTrip.guideStatus
+        );
+
+        // ===================================================
+        // FIND ASSIGNED GUIDE
+        // ===================================================
+
+        if (currentTrip.guideId) {
+          const storedGuides =
+            localStorage.getItem("funtravel_guides");
+
+          if (storedGuides) {
+            const guides: Guide[] =
+              JSON.parse(storedGuides);
+
+            if (Array.isArray(guides)) {
+              const guide = guides.find(
+                (item) =>
+                  item.id === currentTrip?.guideId &&
+                  item.status === "approved"
+              );
+
+              setAssignedGuide(guide || null);
+            }
+          }
+        } else {
+          setAssignedGuide(null);
+        }
+      } catch {
+        setAssignedDriver(null);
+        setAssignedGuide(null);
+      }
+    };
+
+    loadAssignedPartners();
+
+    // Refresh otomatis supaya perubahan Accept/Decline
+    // dari Driver atau Guide segera terlihat.
+    const interval = setInterval(
+      loadAssignedPartners,
+      2000
+    );
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [
+    user,
+    tripId,
+    destination,
+    startDate,
+    endDate,
+  ]);
+
+  // =========================================================
+  // WIKIMEDIA IMAGE
+  // =========================================================
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadMainPhoto = async () => {
+      try {
+        const query = encodeURIComponent(
+          `${destination} Lombok Indonesia`
+        );
+
+        const response = await fetch(
+          `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${query}&gsrnamespace=6&gsrlimit=10&prop=imageinfo&iiprop=url&iiurlwidth=1400&format=json&origin=*`
+        );
+
+        if (!response.ok) return;
 
         const data = await response.json();
 
-        const pages = data?.query?.pages;
+        const pages = data?.query?.pages
+          ? Object.values(data.query.pages)
+          : [];
 
-        if (!pages) {
-          setDestinationImage(null);
-          return;
-        }
+        const first = pages[0] as any;
 
-        const pageList =
-          Object.values(pages) as any[];
+        const url =
+          first?.imageinfo?.[0]?.thumburl ||
+          first?.imageinfo?.[0]?.url;
 
-        const validImage =
-          pageList.find(
-            (page) =>
-              page?.imageinfo?.[0]?.thumburl
-          );
-
-        if (
-          validImage?.imageinfo?.[0]?.thumburl
-        ) {
-          setDestinationImage(
-            validImage.imageinfo[0].thumburl
-          );
-        } else {
-          setDestinationImage(null);
+        if (!cancelled && url) {
+          setDestinationPhoto({
+            url,
+            title:
+              first.title?.replace("File:", "") ||
+              destination,
+          });
         }
       } catch {
-        setDestinationImage(null);
-      } finally {
-        setLoadingImage(false);
+        // Ignore image errors.
       }
-    }
-
-    loadImage();
-  }, [destination]);
-
-  // ==========================================
-  // DATE
-  // ==========================================
-
-  function formatDate(date: string) {
-    if (!date) return "-";
-
-    const parsedDate = new Date(date);
-
-    if (isNaN(parsedDate.getTime())) {
-      return date;
-    }
-
-    return parsedDate.toLocaleDateString(
-      "en-US",
-      {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      }
-    );
-  }
-
-  function calculateDays() {
-    if (!startDate || !endDate) {
-      return 3;
-    }
-
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-
-    const difference =
-      end.getTime() - start.getTime();
-
-    const days =
-      Math.ceil(
-        difference /
-          (1000 * 60 * 60 * 24)
-      ) + 1;
-
-    return days > 0 ? days : 3;
-  }
-
-  const totalDays = calculateDays();
-
-  // ==========================================
-  // USER
-  // ==========================================
-
-  function getInitials(name: string) {
-    if (!name) return "U";
-
-    const words = name.trim().split(" ");
-
-    if (words.length === 1) {
-      return words[0]
-        .charAt(0)
-        .toUpperCase();
-    }
-
-    return (
-      words[0].charAt(0) +
-      words[words.length - 1].charAt(0)
-    ).toUpperCase();
-  }
-
-  function handleLogout() {
-    localStorage.removeItem(
-      "funtravel_logged_in"
-    );
-
-    localStorage.removeItem(
-      "funtravel_current_user"
-    );
-
-    router.push("/login");
-  }
-
-  // ==========================================
-  // SAVE TRIP
-  // ==========================================
-
-  function saveTrip() {
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-
-    const existingTrips =
-      localStorage.getItem("funtravel_trips");
-
-    let trips: Trip[] = [];
-
-    if (existingTrips) {
-      try {
-        trips = JSON.parse(existingTrips);
-      } catch {
-        trips = [];
-      }
-    }
-
-    const alreadyExists =
-      trips.some(
-        (trip) =>
-          trip.userId === user.id &&
-          trip.destination === destination &&
-          trip.startDate === startDate &&
-          trip.endDate === endDate
-      );
-
-    if (alreadyExists) {
-      setSaved(true);
-      return;
-    }
-
-    const newTrip: Trip = {
-      id: Date.now().toString(),
-      userId: user.id,
-      userEmail: user.email,
-      destination,
-      startDate,
-      endDate,
-      travelers,
-      budget,
-      interests,
-      travelStyle,
-      specialRequest,
-      createdAt:
-        new Date().toISOString(),
     };
 
-    const updatedTrips = [
-      newTrip,
-      ...trips,
-    ];
+    loadMainPhoto();
 
-    localStorage.setItem(
-      "funtravel_trips",
-      JSON.stringify(updatedTrips)
-    );
+    return () => {
+      cancelled = true;
+    };
+  }, [destination]);
 
-    setSaved(true);
-  }
-
-  // ==========================================
-  // DELETE
-  // ==========================================
-
-  function deleteTrip() {
-    if (!user) return;
-
-    const existingTrips =
-      localStorage.getItem("funtravel_trips");
-
-    if (!existingTrips) {
-      router.push("/trips");
-      return;
-    }
-
-    let trips: Trip[] = [];
-
-    try {
-      trips = JSON.parse(existingTrips);
-    } catch {
-      trips = [];
-    }
-
-    const updatedTrips =
-      trips.filter(
-        (trip) =>
-          !(
-            trip.userId === user.id &&
-            trip.destination === destination &&
-            trip.startDate === startDate &&
-            trip.endDate === endDate
-          )
-      );
-
-    localStorage.setItem(
-      "funtravel_trips",
-      JSON.stringify(updatedTrips)
-    );
-
-    router.push("/trips");
-  }
-
-  function handlePrint() {
-    window.print();
-  }
-
-  // ==========================================
+  // =========================================================
   // DAY PLANS
-  // ==========================================
+  // =========================================================
 
-  function getDayPlans(): DayPlan[] {
+  const dayPlans = useMemo<DayPlan[]>(() => {
     const plans: DayPlan[] = [];
 
-    for (
-      let i = 1;
-      i <= totalDays;
-      i++
-    ) {
-      if (i === 1) {
+    for (let day = 1; day <= totalDays; day++) {
+      if (day === 1) {
         plans.push({
-          title:
-            "Arrival & Exploration",
-
+          title: "Arrival & Lombok Introduction",
           morning:
-            `Arrive in ${destination} and check in to your accommodation.`,
-
+            "Arrive in Lombok and complete your airport arrival process.",
           afternoon:
-            `Enjoy lunch and start exploring interesting places around ${destination}.`,
-
+            "Transfer to your accommodation and take some time to relax.",
           evening:
-            `Relax and enjoy the local atmosphere around ${destination}.`,
-
-          photoQuery:
-            `${destination} tourism`,
+            "Enjoy your first evening in Lombok and explore the local area.",
+          photoQuery: `${destination} Lombok beach`,
         });
-      } else if (i === 2) {
+      } else if (day === totalDays && totalDays > 1) {
         plans.push({
-          title:
-            "Explore & Experience",
-
+          title: "Relax & Departure",
           morning:
-            `Start the day with a visit to one of the popular attractions in ${destination}.`,
-
+            "Enjoy a relaxed morning and prepare your belongings.",
           afternoon:
-            `Enjoy local food and continue exploring places that match your interests.`,
-
+            "Check out and continue your final Lombok activities if time allows.",
           evening:
-            `Spend a relaxing evening and discover the local nightlife or sunset spots.`,
-
-          photoQuery:
-            `${destination} attractions`,
-        });
-      } else if (i === totalDays) {
-        plans.push({
-          title:
-            "Relax & Departure",
-
-          morning:
-            `Enjoy a relaxed morning and visit one last interesting place in ${destination}.`,
-
-          afternoon:
-            `Have your final local meal and prepare for your journey home.`,
-
-          evening:
-            `Finish your trip and travel back home safely.`,
-
-          photoQuery:
-            `${destination} sunset`,
+            "Head to Lombok International Airport for your departure.",
+          photoQuery: `${destination} Lombok Indonesia`,
         });
       } else {
         plans.push({
-          title:
-            "Adventure Day",
-
+          title: `Explore Lombok — Day ${day}`,
           morning:
-            `Have breakfast and explore a scenic destination around ${destination}.`,
-
+            "Start your day with breakfast and continue exploring Lombok.",
           afternoon:
-            `Enjoy activities, local cuisine, and cultural experiences.`,
-
+            "Enjoy your selected activities, nature, beaches, culture or adventure.",
           evening:
-            `Relax, take photos, and enjoy the atmosphere before ending the day.`,
-
-          photoQuery:
-            `${destination} nature travel`,
+            "Relax and enjoy the evening before returning to your accommodation.",
+          photoQuery: `${destination} Lombok Indonesia`,
         });
       }
     }
 
     return plans;
-  }
+  }, [totalDays, destination]);
 
-  const dayPlans = getDayPlans();
-
-  // ==========================================
-  // LOAD MULTIPLE PHOTOS
-  // ==========================================
+  // =========================================================
+  // LOAD DAY PHOTOS
+  // =========================================================
 
   useEffect(() => {
-    async function loadAllPhotos() {
-      const results: DayPhotos = {};
+    let cancelled = false;
 
-      const loadingState: Record<
-        number,
-        boolean
-      > = {};
+    const loadPhotos = async () => {
+      const result: DayPhotos = {};
 
-      dayPlans.forEach(
-        (_, index) => {
-          loadingState[index + 1] = true;
-        }
-      );
+      for (let index = 0; index < dayPlans.length; index++) {
+        const day = index + 1;
+        const plan = dayPlans[index];
 
-      setLoadingPhotos(loadingState);
+        try {
+          const query = encodeURIComponent(
+            plan.photoQuery
+          );
 
-      await Promise.all(
-        dayPlans.map(
-          async (plan, index) => {
-            const day = index + 1;
+          const response = await fetch(
+            `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${query}&gsrnamespace=6&gsrlimit=5&prop=imageinfo&iiprop=url&iiurlwidth=900&format=json&origin=*`
+          );
 
-            try {
-              const searchQuery =
-                encodeURIComponent(
-                  plan.photoQuery
-                );
+          if (!response.ok) continue;
+
+          const data = await response.json();
+
+          const pages = data?.query?.pages
+            ? Object.values(data.query.pages)
+            : [];
+
+          result[day] = pages
+            .map((page: any) => {
+              const info = page?.imageinfo?.[0];
 
               const url =
-                `https://commons.wikimedia.org/w/api.php` +
-                `?action=query` +
-                `&generator=search` +
-                `&gsrsearch=${searchQuery}` +
-                `&gsrnamespace=6` +
-                `&gsrlimit=10` +
-                `&prop=imageinfo` +
-                `&iiprop=url` +
-                `&iiurlwidth=1000` +
-                `&format=json` +
-                `&origin=*`;
+                info?.thumburl || info?.url;
 
-              const response =
-                await fetch(url);
+              if (!url) return null;
 
-              if (!response.ok) {
-                results[day] = [];
-                return;
-              }
-
-              const data =
-                await response.json();
-
-              const pages =
-                data?.query?.pages;
-
-              if (!pages) {
-                results[day] = [];
-                return;
-              }
-
-              const pageList =
-                Object.values(
-                  pages
-                ) as any[];
-
-              const photos:
-                DestinationPhoto[] =
-                pageList
-                  .map(
-                    (page) => ({
-                      url:
-                        page
-                          ?.imageinfo?.[0]
-                          ?.thumburl,
-                      title:
-                        page?.title ||
-                        destination,
-                    })
-                  )
-                  .filter(
-                    (photo) =>
-                      Boolean(
-                        photo.url
-                      )
-                  )
-                  .slice(0, 5);
-
-              results[day] = photos;
-            } catch {
-              results[day] = [];
-            } finally {
-              setLoadingPhotos(
-                (previous) => ({
-                  ...previous,
-                  [day]: false,
-                })
-              );
-            }
-          }
-        )
-      );
-
-      setDayPhotos(results);
-
-      const initialSlides:
-        Record<number, number> = {};
-
-      dayPlans.forEach(
-        (_, index) => {
-          initialSlides[index + 1] = 0;
+              return {
+                url,
+                title:
+                  page.title?.replace("File:", "") ||
+                  destination,
+              };
+            })
+            .filter(Boolean)
+            .slice(0, 5) as DestinationPhoto[];
+        } catch {
+          // Ignore individual image errors.
         }
-      );
-
-      setActivePhoto(initialSlides);
-    }
-
-    loadAllPhotos();
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    destination,
-    totalDays,
-  ]);
-
-  // ==========================================
-  // AUTO SLIDE — EACH DAY
-  // ==========================================
-
-  useEffect(() => {
-    const interval =
-      setInterval(() => {
-        setActivePhoto(
-          (previous) => {
-            const next = {
-              ...previous,
-            };
-
-            Object.keys(dayPhotos).forEach(
-              (dayKey) => {
-                const day =
-                  Number(dayKey);
-
-                const photos =
-                  dayPhotos[day];
-
-                if (
-                  photos &&
-                  photos.length > 1
-                ) {
-                  next[day] =
-                    ((previous[day] ||
-                      0) +
-                      1) %
-                    photos.length;
-                }
-              }
-            );
-
-            return next;
-          }
-        );
-      }, 4500);
-
-    return () =>
-      clearInterval(interval);
-  }, [dayPhotos]);
-
-  // ==========================================
-  // GALLERY
-  // ==========================================
-
-  function openGallery(
-    day: number,
-    index: number
-  ) {
-    const photos =
-      dayPhotos[day];
-
-    if (
-      !photos ||
-      photos.length === 0
-    ) {
-      return;
-    }
-
-    setGalleryDay(day);
-    setGalleryIndex(index);
-    setGalleryOpen(true);
-  }
-
-  function closeGallery() {
-    setGalleryOpen(false);
-    setGalleryDay(null);
-  }
-
-  function nextGalleryPhoto() {
-    if (
-      galleryDay === null
-    ) {
-      return;
-    }
-
-    const photos =
-      dayPhotos[galleryDay];
-
-    if (
-      !photos ||
-      photos.length === 0
-    ) {
-      return;
-    }
-
-    setGalleryIndex(
-      (previous) =>
-        (previous + 1) %
-        photos.length
-    );
-  }
-
-  function previousGalleryPhoto() {
-    if (
-      galleryDay === null
-    ) {
-      return;
-    }
-
-    const photos =
-      dayPhotos[galleryDay];
-
-    if (
-      !photos ||
-      photos.length === 0
-    ) {
-      return;
-    }
-
-    setGalleryIndex(
-      (previous) =>
-        (previous - 1 +
-          photos.length) %
-        photos.length
-    );
-  }
-
-  // ==========================================
-  // FULLSCREEN AUTO SLIDE
-  // ==========================================
-
-  useEffect(() => {
-    if (!galleryOpen) {
-      return;
-    }
-
-    const interval =
-      setInterval(() => {
-        nextGalleryPhoto();
-      }, 5000);
-
-    return () =>
-      clearInterval(interval);
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    galleryOpen,
-    galleryDay,
-    dayPhotos,
-  ]);
-
-  // ==========================================
-  // ESC KEY
-  // ==========================================
-
-  useEffect(() => {
-    function handleKeyDown(
-      event: KeyboardEvent
-    ) {
-      if (!galleryOpen) {
-        return;
       }
 
-      if (event.key === "Escape") {
-        closeGallery();
+      if (!cancelled) {
+        setDayPhotos(result);
       }
+    };
 
-      if (event.key === "ArrowRight") {
-        nextGalleryPhoto();
-      }
+    loadPhotos();
 
-      if (event.key === "ArrowLeft") {
-        previousGalleryPhoto();
-      }
-    }
+    return () => {
+      cancelled = true;
+    };
+  }, [dayPlans, destination]);
 
-    window.addEventListener(
-      "keydown",
-      handleKeyDown
-    );
-
-    return () =>
-      window.removeEventListener(
-        "keydown",
-        handleKeyDown
-      );
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    galleryOpen,
-    galleryDay,
-    dayPhotos,
-  ]);
-
-  // ==========================================
+  // =========================================================
   // BUDGET
-  // ==========================================
+  // =========================================================
 
-  function getBudgetAmount(): BudgetAmount {
-    const travelerNumber =
-      parseInt(travelers) || 2;
+  const budgetAmount = useMemo<BudgetAmount>(() => {
+    const people = Math.max(
+      1,
+      Number(travelers) || 1
+    );
 
-    const days = totalDays;
+    const days = Math.max(1, totalDays);
 
-    if (budget === "Budget") {
+    if (budget === "under-2m") {
       return {
         accommodation:
-          250000 *
-          days *
-          travelerNumber,
-
+          250000 * days * people,
         food:
-          150000 *
-          days *
-          travelerNumber,
-
+          150000 * days * people,
         transportation:
-          100000 *
-          days,
-
+          100000 * days,
         activities:
-          100000 *
-          days *
-          travelerNumber,
+          100000 * days * people,
       };
     }
 
-    if (budget === "Luxury") {
+    if (budget === "above-20m") {
       return {
         accommodation:
-          1500000 *
-          days *
-          travelerNumber,
-
+          1500000 * days * people,
         food:
-          500000 *
-          days *
-          travelerNumber,
-
+          500000 * days * people,
         transportation:
-          400000 *
-          days,
-
+          400000 * days,
         activities:
-          500000 *
-          days *
-          travelerNumber,
+          500000 * days * people,
       };
     }
 
     return {
       accommodation:
-        600000 *
-        days *
-        travelerNumber,
-
+        600000 * days * people,
       food:
-        250000 *
-        days *
-        travelerNumber,
-
+        250000 * days * people,
       transportation:
-        200000 *
-        days,
-
+        200000 * days,
       activities:
-        250000 *
-        days *
-        travelerNumber,
+        250000 * days * people,
     };
-  }
-
-  const budgetAmount =
-    getBudgetAmount();
+  }, [budget, travelers, totalDays]);
 
   const totalBudget =
     budgetAmount.accommodation +
@@ -893,39 +960,222 @@ function TripContent() {
     budgetAmount.transportation +
     budgetAmount.activities;
 
-  function formatRupiah(
-    amount: number
-  ) {
-    return new Intl.NumberFormat(
-      "id-ID",
-      {
-        style: "currency",
-        currency: "IDR",
-        maximumFractionDigits: 0,
+  const formatRupiah = (value: number) => {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
+  // =========================================================
+  // LABEL HELPERS
+  // =========================================================
+
+  const budgetLabel = () => {
+    const labels: Record<string, string> = {
+      "under-2m": "Under Rp 2.000.000",
+      "2m-5m": "Rp 2.000.000 - Rp 5.000.000",
+      "5m-10m": "Rp 5.000.000 - Rp 10.000.000",
+      "10m-20m": "Rp 10.000.000 - Rp 20.000.000",
+      "above-20m": "Above Rp 20.000.000",
+      flexible: "Flexible",
+    };
+
+    return labels[budget] || "Not specified";
+  };
+
+  const travelStyleLabel = () => {
+    const labels: Record<string, string> = {
+      relaxed: "Relaxed & Slow",
+      balanced: "Balanced",
+      adventure: "Adventure",
+      luxury: "Luxury",
+      budget: "Budget Friendly",
+      family: "Family Trip",
+      couple: "Couple Trip",
+      solo: "Solo Travel",
+    };
+
+    return labels[travelStyle] || "Not specified";
+  };
+
+  const interestList = interests
+    ? interests
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+
+  // =========================================================
+  // GALLERY
+  // =========================================================
+
+  const openGallery = (
+    photos: DestinationPhoto[],
+    index = 0
+  ) => {
+    if (!photos.length) return;
+
+    setActiveGallery(photos);
+    setActivePhotoIndex(index);
+    setGalleryOpen(true);
+  };
+
+  const nextPhoto = () => {
+    if (!activeGallery.length) return;
+
+    setActivePhotoIndex((current) =>
+      current === activeGallery.length - 1
+        ? 0
+        : current + 1
+    );
+  };
+
+  const previousPhoto = () => {
+    if (!activeGallery.length) return;
+
+    setActivePhotoIndex((current) =>
+      current === 0
+        ? activeGallery.length - 1
+        : current - 1
+    );
+  };
+
+  useEffect(() => {
+    if (!galleryOpen) return;
+
+    const handleKeyDown = (
+      event: KeyboardEvent
+    ) => {
+      if (event.key === "Escape") {
+        setGalleryOpen(false);
       }
-    ).format(amount);
-  }
 
-  function getFallbackImage() {
-    return `https://placehold.co/1400x650/e0f2fe/2563eb?text=${encodeURIComponent(
-      destination
-    )}`;
-  }
+      if (event.key === "ArrowRight") {
+        nextPhoto();
+      }
 
-  // ==========================================
-  // LOGIN LOADING
-  // ==========================================
+      if (event.key === "ArrowLeft") {
+        previousPhoto();
+      }
+    };
 
-  if (checkingLogin) {
+    window.addEventListener(
+      "keydown",
+      handleKeyDown
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown
+      );
+    };
+  }, [galleryOpen, activeGallery.length]);
+
+  // =========================================================
+  // DELETE
+  // =========================================================
+
+  const deleteTrip = () => {
+    try {
+      const stored =
+        localStorage.getItem("funtravel_trips");
+
+      if (stored) {
+        const trips: Trip[] = JSON.parse(stored);
+
+        const filtered = trips.filter((trip) => {
+          if (tripId) {
+            return trip.id !== tripId;
+          }
+
+          return !(
+            trip.userEmail === user?.email &&
+            trip.destination === destination &&
+            trip.startDate === startDate &&
+            trip.endDate === endDate
+          );
+        });
+
+        localStorage.setItem(
+          "funtravel_trips",
+          JSON.stringify(filtered)
+        );
+      }
+    } catch {
+      // Ignore localStorage errors.
+    }
+
+    router.push("/trips");
+  };
+
+  // =========================================================
+  // PRINT
+  // =========================================================
+
+  const printTrip = () => {
+    window.print();
+  };
+
+  // =========================================================
+  // DRIVER / GUIDE STATUS
+  // =========================================================
+
+  const driverAssigned = Boolean(
+    assignedDriver || driverName || driverId
+  );
+
+  const guideAssigned = Boolean(
+    assignedGuide ||
+      searchParams.get("guideId")
+  );
+
+  // =========================================================
+  // STATUS LABELS
+  // =========================================================
+
+  const getDriverStatusLabel = () => {
+    if (!currentDriverStatus) {
+      return driverAssigned
+        ? "Assigned"
+        : "Waiting for driver";
+    }
+
+    if (currentDriverStatus === "accepted") {
+      return "Accepted";
+    }
+
+    return currentDriverStatus;
+  };
+
+  const getGuideStatusLabel = () => {
+    if (!currentGuideStatus) {
+      return guideAssigned
+        ? "Assigned"
+        : "Waiting for guide";
+    }
+
+    if (currentGuideStatus === "accepted") {
+      return "Accepted";
+    }
+
+    return currentGuideStatus;
+  };
+
+  // =========================================================
+  // LOADING
+  // =========================================================
+
+  if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center animate-fade-up">
-          <div className="text-5xl mb-4 animate-pulse">
-            ✈️
-          </div>
+      <main className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
 
-          <p className="text-gray-500">
-            Checking your account...
+          <p className="text-sm text-slate-500">
+            Loading your Lombok trip...
           </p>
         </div>
       </main>
@@ -933,902 +1183,1955 @@ function TripContent() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 text-gray-900">
+    <main className="min-h-screen bg-slate-50 text-slate-900">
+      <Navbar />
 
-      {/* ======================================
-          NAVBAR
-      ====================================== */}
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
 
-      <div className="print:hidden">
-        <Navbar />
-      </div>
+        {/* ================================================= */}
+        {/* TOP */}
+        {/* ================================================= */}
 
-      {/* ======================================
-          HERO
-      ====================================== */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden">
+          <Link
+            href="/trips"
+            className="inline-flex items-center font-medium text-blue-600 transition hover:text-blue-700"
+          >
+            ← My Trips
+          </Link>
 
-      <section
-        className="max-w-6xl mx-auto px-6 pt-8"
-        style={{
-          animationName: pageLoaded
-            ? "fadeUp"
-            : "none",
-          animationDuration: "0.8s",
-          animationTimingFunction:
-            "ease-out",
-          animationFillMode:
-            "forwards",
-          opacity: pageLoaded
-            ? undefined
-            : 0,
-        }}
-      >
+          <div className="flex gap-2">
+            <button
+              onClick={printTrip}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold transition hover:bg-slate-50"
+            >
+              🖨️ Print
+            </button>
 
-        <div className="relative h-[360px] md:h-[430px] rounded-[2rem] overflow-hidden shadow-lg bg-blue-100 group">
+            <button
+              onClick={() =>
+                setShowDeleteModal(true)
+              }
+              className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
 
-          {loadingImage ? (
-            <div className="w-full h-full flex items-center justify-center">
+        {/* ================================================= */}
+        {/* HERO */}
+        {/* ================================================= */}
 
-              <div className="text-center">
+        <section className="relative mb-8 overflow-hidden rounded-3xl bg-slate-900 shadow-xl">
+          <div className="relative h-[300px] sm:h-[380px]">
+            {destinationPhoto ? (
+              <img
+                src={destinationPhoto.url}
+                alt={destination}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center bg-gradient-to-br from-blue-700 to-cyan-600 text-7xl">
+                🏝️
+              </div>
+            )}
 
-                <div className="text-5xl animate-pulse">
-                  🌎
+            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
+
+            <div className="absolute bottom-0 left-0 right-0 p-6 text-white sm:p-8">
+              <div className="mb-3 inline-flex rounded-full bg-white/20 px-3 py-1 text-xs font-bold uppercase tracking-wider backdrop-blur">
+                🇮🇩 LOMBOK
+              </div>
+
+              <h1 className="text-3xl font-bold sm:text-5xl">
+                Your Personalized Trip
+              </h1>
+
+              <p className="mt-2 text-lg text-white/90">
+                {destination}
+              </p>
+
+              <p className="mt-2 text-sm text-white/75">
+                {formatShortDate(startDate)} —{" "}
+                {formatShortDate(endDate)}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* ================================================= */}
+        {/* SAVE STATUS */}
+        {/* ================================================= */}
+
+        {saved && (
+          <div className="mb-6 rounded-2xl border border-green-200 bg-green-50 px-5 py-4 text-sm text-green-800 print:hidden">
+            <strong>
+              ✓ Trip saved successfully.
+            </strong>{" "}
+            This Lombok trip is now available in your
+            My Trips page.
+          </div>
+        )}
+
+        {/* ================================================= */}
+        {/* OVERVIEW */}
+        {/* ================================================= */}
+
+        <section className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="mb-2 text-2xl">
+              📅
+            </div>
+
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Duration
+            </p>
+
+            <p className="mt-1 text-xl font-bold">
+              {totalDays}{" "}
+              {totalDays === 1
+                ? "Day"
+                : "Days"}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="mb-2 text-2xl">
+              👥
+            </div>
+
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Travelers
+            </p>
+
+            <p className="mt-1 text-xl font-bold">
+              {travelers}{" "}
+              {Number(travelers) === 1
+                ? "Person"
+                : "People"}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="mb-2 text-2xl">
+              💰
+            </div>
+
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Budget
+            </p>
+
+            <p className="mt-1 text-sm font-bold">
+              {budgetLabel()}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="mb-2 text-2xl">
+              📍
+            </div>
+
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Destination
+            </p>
+
+            <p className="mt-1 text-xl font-bold">
+              Lombok
+            </p>
+          </div>
+        </section>
+
+        {/* ================================================= */}
+        {/* TRIP PREPARATION STATUS */}
+        {/* ================================================= */}
+
+        <section className="mb-8 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <div className="mb-6">
+            <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
+              Trip Status
+            </p>
+
+            <h2 className="mt-1 text-2xl font-bold">
+              {driverAssigned || guideAssigned
+                ? "Trip Partners Assigned"
+                : airportPickup === "funtravel" ||
+                  guideRequired
+                ? "Preparing Your Trip"
+                : "Trip Ready"}
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500">
+              Your Lombok journey is being organized from
+              arrival to departure.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-4">
+            <div className="rounded-2xl bg-green-50 p-4">
+              <div className="text-2xl">
+                ✓
+              </div>
+
+              <p className="mt-2 font-bold text-green-800">
+                Trip Planned
+              </p>
+
+              <p className="mt-1 text-xs text-green-700">
+                Your trip details are saved.
+              </p>
+            </div>
+
+            <div
+              className={`rounded-2xl p-4 ${
+                hasFlight
+                  ? "bg-green-50"
+                  : "bg-slate-50"
+              }`}
+            >
+              <div className="text-2xl">
+                {hasFlight ? "✓" : "○"}
+              </div>
+
+              <p className="mt-2 font-bold">
+                Flight
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                {hasFlight
+                  ? "Flight information added."
+                  : "Flight not added yet."}
+              </p>
+            </div>
+
+            <div
+              className={`rounded-2xl p-4 ${
+                airportPickup === "funtravel"
+                  ? driverAssigned
+                    ? "bg-green-50"
+                    : "bg-blue-50"
+                  : "bg-slate-50"
+              }`}
+            >
+              <div className="text-2xl">
+                {driverAssigned
+                  ? "✓"
+                  : "🚗"}
+              </div>
+
+              <p className="mt-2 font-bold">
+                Airport Pickup
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                {airportPickup ===
+                "funtravel"
+                  ? driverAssigned
+                    ? "Driver assigned."
+                    : "Driver request sent."
+                  : "Own transportation."}
+              </p>
+            </div>
+
+            <div
+              className={`rounded-2xl p-4 ${
+                guideRequired
+                  ? guideAssigned
+                    ? "bg-green-50"
+                    : "bg-purple-50"
+                  : "bg-slate-50"
+              }`}
+            >
+              <div className="text-2xl">
+                {guideAssigned
+                  ? "✓"
+                  : guideRequired
+                  ? "🧑‍🏫"
+                  : "🏝️"}
+              </div>
+
+              <p className="mt-2 font-bold">
+                Guide
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                {guideRequired
+                  ? guideAssigned
+                    ? "Guide assigned."
+                    : "Guide request sent."
+                  : "No guide requested."}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* ================================================= */}
+        {/* FLIGHT */}
+        {/* ================================================= */}
+
+        <section className="mb-8 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <div className="mb-6 flex items-start gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-2xl">
+              ✈️
+            </div>
+
+            <div>
+              <h2 className="text-2xl font-bold">
+                Flight Information
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Your arrival and departure details.
+              </p>
+            </div>
+          </div>
+
+          {!hasFlight ? (
+            <div className="rounded-2xl bg-amber-50 p-5 text-sm text-amber-800">
+              <strong>
+                Flight information not added yet.
+              </strong>
+
+              <p className="mt-1">
+                You can arrange your flight details
+                later.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-5 md:grid-cols-2">
+
+              {/* ARRIVAL */}
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                <div className="mb-5 flex items-center justify-between">
+                  <h3 className="font-bold">
+                    Arrival
+                  </h3>
+
+                  <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                    ARRIVAL
+                  </span>
                 </div>
 
-                <p className="text-blue-600 font-medium mt-3 animate-pulse">
-                  Finding a beautiful photo...
-                </p>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-slate-400">
+                      Flight
+                    </p>
 
+                    <p className="mt-1 text-xl font-bold">
+                      {arrivalFlight || "-"}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-slate-400">
+                        Date
+                      </p>
+
+                      <p className="mt-1 font-semibold">
+                        {formatDate(arrivalDate)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-slate-400">
+                        Time
+                      </p>
+
+                      <p className="mt-1 font-semibold">
+                        {arrivalTime || "-"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-white p-4">
+                    <p className="text-xs text-slate-400">
+                      Arrival
+                    </p>
+
+                    <p className="mt-1 font-bold">
+                      Lombok International Airport
+                    </p>
+
+                    <p className="text-sm text-slate-500">
+                      Lombok, Indonesia
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* DEPARTURE */}
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                <div className="mb-5 flex items-center justify-between">
+                  <h3 className="font-bold">
+                    Departure
+                  </h3>
+
+                  <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
+                    DEPARTURE
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-slate-400">
+                      Flight
+                    </p>
+
+                    <p className="mt-1 text-xl font-bold">
+                      {departureFlight || "-"}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-slate-400">
+                        Date
+                      </p>
+
+                      <p className="mt-1 font-semibold">
+                        {formatDate(departureDate)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-slate-400">
+                        Time
+                      </p>
+
+                      <p className="mt-1 font-semibold">
+                        {departureTime || "-"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-white p-4">
+                    <p className="text-xs text-slate-400">
+                      Departure
+                    </p>
+
+                    <p className="mt-1 font-bold">
+                      Lombok International Airport
+                    </p>
+
+                    <p className="text-sm text-slate-500">
+                      Lombok, Indonesia
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* ================================================= */}
+        {/* AIRPORT PICKUP */}
+        {/* ================================================= */}
+
+        <section className="mb-8 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          <div className="mb-6 flex items-start gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-2xl">
+              🚗
+            </div>
+
+            <div>
+              <h2 className="text-2xl font-bold">
+                Airport Pickup
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Your transportation from Lombok
+                International Airport.
+              </p>
+            </div>
+          </div>
+
+          {airportPickup === "own" ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+              <div className="flex items-start gap-4">
+                <div className="text-3xl">
+                  🚕
+                </div>
+
+                <div>
+                  <h3 className="font-bold">
+                    You&apos;ll arrange your own
+                    transportation
+                  </h3>
+
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    FunTravel will not assign a driver
+                    for your airport transfer.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-5">
+
+              <div className="rounded-2xl bg-blue-50 p-5">
+                <h3 className="font-bold text-blue-900">
+                  FunTravel Airport Pickup
+                </h3>
+
+                <p className="mt-2 text-sm leading-6 text-blue-800">
+                  Your request has been sent automatically
+                  to approved FunTravel drivers.
+                </p>
+              </div>
+
+              {/* DRIVER DETAILS */}
+
+              {assignedDriver ? (
+                <div className="overflow-hidden rounded-3xl border border-green-200 bg-green-50">
+
+                  <div className="border-b border-green-200 bg-green-100 p-5">
+                    <div className="flex items-center gap-4">
+
+                      <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-white text-4xl shadow-sm">
+                        👨‍✈️
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                          Driver Assigned
+                        </p>
+
+                        <h3 className="mt-1 text-2xl font-bold text-green-950">
+                          {assignedDriver.name}
+                        </h3>
+
+                        <p className="mt-1 text-sm font-semibold text-green-700">
+                          {getDriverStatusLabel()}
+                        </p>
+                      </div>
+
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 p-5">
+
+                    {/* CONTACT */}
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+
+                      <div className="rounded-2xl bg-white p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Phone
+                        </p>
+
+                        <p className="mt-1 font-bold">
+                          {assignedDriver.phone || "-"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-white p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          WhatsApp
+                        </p>
+
+                        <p className="mt-1 font-bold">
+                          {assignedDriver.whatsapp || "-"}
+                        </p>
+                      </div>
+
+                    </div>
+
+                    {/* VEHICLE */}
+
+                    <div className="rounded-2xl bg-white p-5">
+
+                      <p className="mb-4 text-xs font-bold uppercase tracking-wide text-slate-400">
+                        Vehicle Information
+                      </p>
+
+                      <div className="grid gap-4 sm:grid-cols-3">
+
+                        <div>
+                          <p className="text-xs text-slate-400">
+                            Vehicle Type
+                          </p>
+
+                          <p className="mt-1 font-bold">
+                            {assignedDriver.vehicleType || "-"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-slate-400">
+                            Vehicle Model
+                          </p>
+
+                          <p className="mt-1 font-bold">
+                            {assignedDriver.vehicleModel || "-"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-slate-400">
+                            Plate Number
+                          </p>
+
+                          <p className="mt-1 font-bold">
+                            {assignedDriver.vehiclePlate || "-"}
+                          </p>
+                        </div>
+
+                      </div>
+                    </div>
+
+                    {/* EXPERIENCE */}
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+
+                      <div className="rounded-2xl bg-white p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Experience
+                        </p>
+
+                        <p className="mt-1 font-semibold">
+                          {assignedDriver.experience || "-"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-white p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Languages
+                        </p>
+
+                        <p className="mt-1 font-semibold">
+                          {assignedDriver.languages || "-"}
+                        </p>
+                      </div>
+
+                    </div>
+
+                    {/* ADDRESS */}
+
+                    {assignedDriver.address && (
+                      <div className="rounded-2xl bg-white p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Address
+                        </p>
+
+                        <p className="mt-1 text-sm leading-6 font-semibold">
+                          {assignedDriver.address}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* BUTTONS */}
+
+                    <div className="flex flex-wrap gap-3">
+
+                      {assignedDriver.phone && (
+                        <a
+                          href={`tel:${assignedDriver.phone}`}
+                          className="rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-100"
+                        >
+                          📞 Call Driver
+                        </a>
+                      )}
+
+                      {assignedDriver.whatsapp && (
+                        <a
+                          href={`https://wa.me/${assignedDriver.whatsapp.replace(
+                            /\D/g,
+                            ""
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700"
+                        >
+                          💬 WhatsApp Driver
+                        </a>
+                      )}
+
+                    </div>
+
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border-2 border-dashed border-blue-200 bg-white p-6">
+                  <div className="flex items-start gap-4">
+
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-100 text-2xl">
+                      👨‍✈️
+                    </div>
+
+                    <div>
+                      <h3 className="font-bold">
+                        Driver request sent
+                      </h3>
+
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        Your airport pickup request has
+                        been automatically sent to approved
+                        FunTravel drivers. A driver will
+                        appear here after accepting your
+                        trip.
+                      </p>
+
+                      <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+
+                        <strong>
+                          Driver request process:
+                        </strong>
+
+                        <ul className="mt-2 list-inside list-disc space-y-1">
+                          <li>
+                            Approved drivers receive the
+                            trip request.
+                          </li>
+
+                          <li>
+                            A driver can Accept or Decline.
+                          </li>
+
+                          <li>
+                            The first accepted driver
+                            becomes assigned to your trip.
+                          </li>
+
+                          <li>
+                            Driver details will appear here
+                            automatically.
+                          </li>
+                        </ul>
+
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* ================================================= */}
+        {/* GUIDE */}
+        {/* ================================================= */}
+
+        {guideRequired && (
+          <section className="mb-8 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+
+            <div className="mb-6 flex items-start gap-4">
+
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-purple-100 text-2xl">
+                🧑‍🏫
+              </div>
+
+              <div>
+                <h2 className="text-2xl font-bold">
+                  Lombok Guide
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Your guide request is being processed.
+                </p>
               </div>
 
             </div>
-          ) : (
-            <img
-              src={
-                destinationImage ||
-                getFallbackImage()
-              }
-              alt={`${destination} destination`}
-              className="w-full h-full object-cover transition-transform duration-[1200ms] ease-out group-hover:scale-105"
-              onError={(event) => {
-                event.currentTarget.src =
-                  getFallbackImage();
-              }}
-            />
-          )}
 
-          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent pointer-events-none" />
+            {/* GUIDE DETAILS */}
 
-          <div className="absolute bottom-0 left-0 right-0 p-7 md:p-10 text-white">
+            {assignedGuide ? (
+              <div className="overflow-hidden rounded-3xl border border-purple-200 bg-purple-50">
 
-            <div
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/20 backdrop-blur-md text-sm font-semibold"
-              style={{
-                animationName: pageLoaded
-                  ? "fadeUp"
-                  : "none",
-                animationDuration:
-                  "0.7s",
-                animationDelay:
-                  "250ms",
-                animationFillMode:
-                  "forwards",
-                opacity:
-                  pageLoaded
-                    ? undefined
-                    : 0,
-              }}
-            >
-              ✨ Your Personalized Trip
+                <div className="border-b border-purple-200 bg-purple-100 p-5">
+
+                  <div className="flex items-center gap-4">
+
+                    <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-white text-4xl shadow-sm">
+                      🧑‍🏫
+                    </div>
+
+                    <div>
+
+                      <p className="text-xs font-bold uppercase tracking-wide text-purple-700">
+                        Tour Guide Assigned
+                      </p>
+
+                      <h3 className="mt-1 text-2xl font-bold text-purple-950">
+                        {assignedGuide.name}
+                      </h3>
+
+                      <p className="mt-1 text-sm font-semibold text-purple-700">
+                        {getGuideStatusLabel()}
+                      </p>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+                <div className="space-y-4 p-5">
+
+                  {/* CONTACT */}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Phone
+                      </p>
+
+                      <p className="mt-1 font-bold">
+                        {assignedGuide.phone || "-"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        WhatsApp
+                      </p>
+
+                      <p className="mt-1 font-bold">
+                        {assignedGuide.whatsapp || "-"}
+                      </p>
+                    </div>
+
+                  </div>
+
+                  {/* EXPERIENCE */}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Experience
+                      </p>
+
+                      <p className="mt-1 font-semibold">
+                        {assignedGuide.experience || "-"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl bg-white p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Languages
+                      </p>
+
+                      <p className="mt-1 font-semibold">
+                        {assignedGuide.languages || "-"}
+                      </p>
+                    </div>
+
+                  </div>
+
+                  {/* SPECIALTIES */}
+
+                  {assignedGuide.specialties && (
+                    <div className="rounded-2xl bg-white p-4">
+
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Specialties
+                      </p>
+
+                      <p className="mt-1 text-sm leading-6 font-semibold">
+                        {assignedGuide.specialties}
+                      </p>
+
+                    </div>
+                  )}
+
+                  {/* LOMBOK AREAS */}
+
+                  {assignedGuide.areas && (
+                    <div className="rounded-2xl bg-white p-4">
+
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Lombok Areas
+                      </p>
+
+                      <p className="mt-1 text-sm leading-6 font-semibold">
+                        {assignedGuide.areas}
+                      </p>
+
+                    </div>
+                  )}
+
+                  {/* ADDRESS */}
+
+                  {assignedGuide.address && (
+                    <div className="rounded-2xl bg-white p-4">
+
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Address
+                      </p>
+
+                      <p className="mt-1 text-sm leading-6 font-semibold">
+                        {assignedGuide.address}
+                      </p>
+
+                    </div>
+                  )}
+
+                  {/* BUTTONS */}
+
+                  <div className="flex flex-wrap gap-3">
+
+                    {assignedGuide.phone && (
+                      <a
+                        href={`tel:${assignedGuide.phone}`}
+                        className="rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-100"
+                      >
+                        📞 Call Guide
+                      </a>
+                    )}
+
+                    {assignedGuide.whatsapp && (
+                      <a
+                        href={`https://wa.me/${assignedGuide.whatsapp.replace(
+                          /\D/g,
+                          ""
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-xl bg-purple-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-purple-700"
+                      >
+                        💬 WhatsApp Guide
+                      </a>
+                    )}
+
+                  </div>
+
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border-2 border-dashed border-purple-200 bg-purple-50 p-6">
+
+                <div className="flex items-start gap-4">
+
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-2xl">
+                    🧑‍🏫
+                  </div>
+
+                  <div>
+
+                    <h3 className="font-bold text-purple-900">
+                      Guide request sent
+                    </h3>
+
+                    <p className="mt-2 text-sm leading-6 text-purple-800">
+                      Your request has been automatically
+                      sent to approved FunTravel guides.
+                      A guide will appear here after
+                      accepting your trip.
+                    </p>
+
+                    <div className="mt-4 rounded-xl bg-white p-4 text-sm text-slate-600">
+
+                      <strong>
+                        Guide request process:
+                      </strong>
+
+                      <ul className="mt-2 list-inside list-disc space-y-1">
+                        <li>
+                          Approved guides receive the trip
+                          request.
+                        </li>
+
+                        <li>
+                          A guide can Accept or Decline.
+                        </li>
+
+                        <li>
+                          The accepted guide becomes assigned
+                          to your trip.
+                        </li>
+
+                        <li>
+                          Guide information will appear here
+                          automatically.
+                        </li>
+                      </ul>
+
+                    </div>
+
+                  </div>
+
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ================================================= */}
+        {/* ACCOMMODATION */}
+        {/* ================================================= */}
+
+        <section className="mb-8 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+
+          <div className="mb-6 flex items-start gap-4">
+
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-2xl">
+              🏨
             </div>
 
-            <h1
-              className="text-4xl md:text-6xl font-bold mt-4"
-              style={{
-                animationName: pageLoaded
-                  ? "fadeUp"
-                  : "none",
-                animationDuration:
-                  "0.8s",
-                animationDelay:
-                  "350ms",
-                animationFillMode:
-                  "forwards",
-                opacity:
-                  pageLoaded
-                    ? undefined
-                    : 0,
-              }}
-            >
-              {destination}
-            </h1>
+            <div>
 
-            <p
-              className="mt-3 text-white/90"
-              style={{
-                animationName: pageLoaded
-                  ? "fadeUp"
-                  : "none",
-                animationDuration:
-                  "0.8s",
-                animationDelay:
-                  "450ms",
-                animationFillMode:
-                  "forwards",
-                opacity:
-                  pageLoaded
-                    ? undefined
-                    : 0,
-              }}
-            >
-              {formatDate(startDate)}{" "}
-              →{" "}
-              {formatDate(endDate)}{" "}
-              • {totalDays} Days
-            </p>
+              <h2 className="text-2xl font-bold">
+                Accommodation
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Your hotel information in Lombok.
+              </p>
+
+            </div>
 
           </div>
 
-        </div>
+          {accommodationType === "own" &&
+          hotelName ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
 
-        {/* ACTION BUTTONS */}
+              <div className="flex items-start gap-4">
 
-        <div
-          className="flex flex-wrap gap-3 mt-5 print:hidden"
-          style={{
-            animationName: pageLoaded
-              ? "fadeUp"
-              : "none",
-            animationDuration: "0.7s",
-            animationDelay: "550ms",
-            animationFillMode:
-              "forwards",
-            opacity: pageLoaded
-              ? undefined
-              : 0,
-          }}
-        >
+                <div className="text-3xl">
+                  🏨
+                </div>
 
-          <button
-            onClick={saveTrip}
-            disabled={saved}
-            className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 active:scale-95 ${
-              saved
-                ? "bg-green-100 text-green-600"
-                : "bg-blue-600 text-white hover:bg-blue-700 hover:-translate-y-1 hover:shadow-lg"
-            }`}
-          >
-            {saved
-              ? "✓ Trip Saved"
-              : "💾 Save Trip"}
-          </button>
+                <div className="flex-1">
 
-          <button
-            onClick={handlePrint}
-            className="px-6 py-3 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 hover:-translate-y-1 hover:shadow-md active:scale-95 transition-all duration-200"
-          >
-            🖨️ Print
-          </button>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Your Hotel
+                  </p>
 
-        </div>
+                  <h3 className="mt-1 text-xl font-bold">
+                    {hotelName}
+                  </h3>
 
-      </section>
+                  {hotelAddress && (
+                    <p className="mt-2 text-sm text-slate-600">
+                      📍 {hotelAddress}
+                    </p>
+                  )}
 
-      {/* ======================================
-          OVERVIEW
-      ====================================== */}
+                  {bookingNumber && (
+                    <div className="mt-4 rounded-xl bg-white p-4">
 
-      <section className="max-w-6xl mx-auto px-6 py-8">
+                      <p className="text-xs text-slate-400">
+                        Booking Number
+                      </p>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <p className="mt-1 font-bold">
+                        {bookingNumber}
+                      </p>
 
-          <InfoCard
-            icon="📅"
-            title="Duration"
-            value={`${totalDays} Days`}
-            delay="650ms"
-            loaded={pageLoaded}
-          />
+                    </div>
+                  )}
 
-          <InfoCard
-            icon="👥"
-            title="Travelers"
-            value={travelers}
-            delay="730ms"
-            loaded={pageLoaded}
-          />
+                </div>
 
-          <InfoCard
-            icon="💰"
-            title="Budget"
-            value={budget}
-            delay="810ms"
-            loaded={pageLoaded}
-          />
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-amber-50 p-5">
 
-          <InfoCard
-            icon="🧳"
-            title="Style"
-            value={travelStyle}
-            delay="890ms"
-            loaded={pageLoaded}
-          />
+              <div className="flex items-start gap-4">
 
-        </div>
-
-      </section>
-
-      {/* ======================================
-          MAIN
-      ====================================== */}
-
-      <section className="max-w-6xl mx-auto px-6 pb-16">
-
-        <div className="grid lg:grid-cols-3 gap-8">
-
-          {/* ==================================
-              LEFT
-          ================================== */}
-
-          <div className="lg:col-span-2 space-y-8">
-
-            {/* ==================================
-                ITINERARY
-            ================================== */}
-
-            <div
-              className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 md:p-8"
-              style={{
-                animationName: pageLoaded
-                  ? "fadeUp"
-                  : "none",
-                animationDuration:
-                  "0.8s",
-                animationDelay:
-                  "900ms",
-                animationFillMode:
-                  "forwards",
-                opacity:
-                  pageLoaded
-                    ? undefined
-                    : 0,
-              }}
-            >
-
-              <div className="flex items-center gap-4 mb-8">
-
-                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center text-2xl transition-all duration-300 hover:scale-110 hover:rotate-3">
+                <div className="text-3xl">
                   🗓️
                 </div>
 
                 <div>
 
-                  <h2 className="text-2xl font-bold">
-                    Your Itinerary
-                  </h2>
+                  <h3 className="font-bold text-amber-900">
+                    Accommodation not selected yet
+                  </h3>
 
-                  <p className="text-sm text-gray-500">
-                    Your suggested day-by-day travel plan
+                  <p className="mt-2 text-sm leading-6 text-amber-800">
+                    You decided to arrange your hotel
+                    later. Your accommodation information
+                    can be added once you have made your
+                    booking.
                   </p>
 
                 </div>
 
               </div>
 
-              <div className="space-y-12">
+            </div>
+          )}
+        </section>
 
-                {dayPlans.map(
-                  (plan, index) => {
+        {/* ================================================= */}
+        {/* ITINERARY */}
+        {/* ================================================= */}
 
-                    const day =
-                      index + 1;
+        <section className="mb-8 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
 
-                    const photos =
-                      dayPhotos[day] ||
-                      [];
+          <div className="mb-8 flex items-start gap-4">
 
-                    const currentPhoto =
-                      activePhoto[day] ||
-                      0;
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-2xl">
+              📋
+            </div>
 
-                    return (
-                      <div
-                        key={day}
-                        className="relative pl-8 border-l-2 border-blue-100"
-                        style={{
-                          animationName:
-                            pageLoaded
-                              ? "fadeUp"
-                              : "none",
-                          animationDuration:
-                            "0.7s",
-                          animationDelay:
-                            `${1000 + index * 120}ms`,
-                          animationFillMode:
-                            "forwards",
-                          opacity:
-                            pageLoaded
-                              ? undefined
-                              : 0,
-                        }}
-                      >
+            <div>
 
-                        <div className="absolute -left-3 top-0 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-md transition-transform duration-300 hover:scale-125">
-                          {day}
-                        </div>
+              <h2 className="text-2xl font-bold">
+                Your Lombok Itinerary
+              </h2>
 
-                        <h3 className="text-xl font-bold">
-                          Day {day} —{" "}
-                          {plan.title}
-                        </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                A simple day-by-day plan for your Lombok
+                journey.
+              </p>
 
-                        {/* PHOTO */}
+            </div>
 
-                        <div className="mt-5">
+          </div>
 
-                          <div
-                            className="relative h-[220px] md:h-[300px] rounded-3xl overflow-hidden bg-gray-100 cursor-pointer group"
-                            onClick={() =>
-                              openGallery(
-                                day,
-                                currentPhoto
-                              )
-                            }
-                          >
+          <div className="space-y-8">
 
-                            {loadingPhotos[day] ? (
+            {/* ================================================= */}
+            {/* DRIVER & GUIDE INSIDE ITINERARY */}
+            {/* ================================================= */}
 
-                              <div className="w-full h-full flex flex-col items-center justify-center">
+            {(assignedDriver || assignedGuide) && (
+              <div>
 
-                                <div className="text-4xl animate-pulse">
-                                  📸
-                                </div>
+                <div className="mb-5">
 
-                                <p className="text-sm text-gray-400 mt-2 animate-pulse">
-                                  Finding photos...
-                                </p>
+                  <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
+                    Your Travel Team
+                  </p>
 
-                              </div>
+                  <h3 className="mt-1 text-xl font-bold">
+                    Driver & Tour Guide
+                  </h3>
 
-                            ) : photos.length > 0 ? (
+                  <p className="mt-1 text-sm text-slate-500">
+                    Partner details for your Lombok journey.
+                  </p>
 
-                              <>
+                </div>
 
-                                <img
-                                  src={
-                                    photos[
-                                      currentPhoto
-                                    ]?.url
-                                  }
-                                  alt={`${destination} - Day ${day}`}
-                                  className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
-                                  onError={(
-                                    event
-                                  ) => {
-                                    event.currentTarget.style.display =
-                                      "none";
-                                  }}
-                                />
+                <div className="grid gap-5 md:grid-cols-2">
 
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+                  {/* ================= DRIVER ================= */}
 
-                                <div className="absolute bottom-4 left-4 text-white text-sm font-semibold transition-transform duration-300 group-hover:translate-x-1">
-                                  📍 {destination}
-                                </div>
+                  {assignedDriver && (
+                    <div className="overflow-hidden rounded-3xl border border-green-200 bg-green-50">
 
-                                <div className="absolute bottom-4 right-4 bg-black/50 backdrop-blur-md text-white px-3 py-1.5 rounded-full text-xs">
-                                  🖼️{" "}
-                                  {currentPhoto +
-                                    1}{" "}
-                                  /{" "}
-                                  {
-                                    photos.length
-                                  }
-                                </div>
+                      <div className="border-b border-green-200 bg-green-100 p-5">
 
-                                <div className="absolute inset-0 flex items-center justify-between px-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <div className="flex items-center gap-4">
 
-                                  <button
-                                    type="button"
-                                    onClick={(
-                                      event
-                                    ) => {
-                                      event.stopPropagation();
-
-                                      setActivePhoto(
-                                        (
-                                          previous
-                                        ) => ({
-                                          ...previous,
-                                          [day]:
-                                            (currentPhoto -
-                                              1 +
-                                              photos.length) %
-                                            photos.length,
-                                        })
-                                      );
-                                    }}
-                                    className="w-10 h-10 rounded-full bg-white/80 backdrop-blur text-gray-800 shadow-lg hover:bg-white hover:scale-110 active:scale-95 transition-all duration-200"
-                                  >
-                                    ←
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={(
-                                      event
-                                    ) => {
-                                      event.stopPropagation();
-
-                                      setActivePhoto(
-                                        (
-                                          previous
-                                        ) => ({
-                                          ...previous,
-                                          [day]:
-                                            (currentPhoto +
-                                              1) %
-                                            photos.length,
-                                        })
-                                      );
-                                    }}
-                                    className="w-10 h-10 rounded-full bg-white/80 backdrop-blur text-gray-800 shadow-lg hover:bg-white hover:scale-110 active:scale-95 transition-all duration-200"
-                                  >
-                                    →
-                                  </button>
-
-                                </div>
-
-                              </>
-
-                            ) : (
-
-                              <div className="w-full h-full flex items-center justify-center bg-blue-50">
-
-                                <div className="text-center px-6 transition-transform duration-500 hover:scale-105">
-
-                                  <div className="text-4xl">
-                                    🌎
-                                  </div>
-
-                                  <p className="text-sm text-blue-600 mt-2 font-medium">
-                                    {destination}
-                                  </p>
-
-                                </div>
-
-                              </div>
-
-                            )}
-
+                          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white text-3xl shadow-sm">
+                            👨‍✈️
                           </div>
 
-                          {/* THUMBNAILS */}
+                          <div>
 
-                          {photos.length > 1 && (
-                            <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
+                            <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                              Driver
+                            </p>
 
-                              {photos.map(
-                                (
-                                  photo,
-                                  photoIndex
-                                ) => (
-                                  <button
-                                    key={
-                                      photoIndex
-                                    }
-                                    type="button"
-                                    onClick={() =>
-                                      setActivePhoto(
-                                        (
-                                          previous
-                                        ) => ({
-                                          ...previous,
-                                          [day]:
-                                            photoIndex,
-                                        })
-                                      )
-                                    }
-                                    className={`relative flex-shrink-0 w-16 h-12 rounded-lg overflow-hidden border-2 transition-all duration-200 ${
-                                      currentPhoto ===
-                                      photoIndex
-                                        ? "border-blue-600 scale-105 shadow-md"
-                                        : "border-transparent opacity-70 hover:opacity-100 hover:scale-105"
-                                    }`}
-                                  >
-                                    <img
-                                      src={
-                                        photo.url
-                                      }
-                                      alt=""
-                                      className="w-full h-full object-cover"
-                                    />
-                                  </button>
-                                )
-                              )}
+                            <h4 className="mt-1 text-xl font-bold text-green-950">
+                              {assignedDriver.name}
+                            </h4>
 
-                            </div>
-                          )}
+                            <span className="mt-2 inline-flex rounded-full bg-green-200 px-3 py-1 text-xs font-bold text-green-800">
+                              {getDriverStatusLabel()}
+                            </span>
 
-                        </div>
-
-                        {/* ACTIVITIES */}
-
-                        <div className="mt-5 space-y-3">
-
-                          <Activity
-                            time="Morning"
-                            icon="🌅"
-                            text={
-                              plan.morning
-                            }
-                            delay="0ms"
-                          />
-
-                          <Activity
-                            time="Afternoon"
-                            icon="🍜"
-                            text={
-                              plan.afternoon
-                            }
-                            delay="80ms"
-                          />
-
-                          <Activity
-                            time="Evening"
-                            icon="🌙"
-                            text={
-                              plan.evening
-                            }
-                            delay="160ms"
-                          />
+                          </div>
 
                         </div>
 
                       </div>
-                    );
-                  }
+
+                      <div className="space-y-4 p-5">
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+
+                          <div className="rounded-2xl bg-white p-4">
+                            <p className="text-xs font-semibold uppercase text-slate-400">
+                              Phone
+                            </p>
+
+                            <p className="mt-1 text-sm font-bold">
+                              {assignedDriver.phone || "-"}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4">
+                            <p className="text-xs font-semibold uppercase text-slate-400">
+                              WhatsApp
+                            </p>
+
+                            <p className="mt-1 text-sm font-bold">
+                              {assignedDriver.whatsapp || "-"}
+                            </p>
+                          </div>
+
+                        </div>
+
+                        <div className="rounded-2xl bg-white p-4">
+
+                          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">
+                            Vehicle
+                          </p>
+
+                          <div className="space-y-2 text-sm">
+
+                            <div className="flex justify-between gap-4">
+                              <span className="text-slate-500">
+                                Type
+                              </span>
+
+                              <span className="font-semibold text-right">
+                                {assignedDriver.vehicleType || "-"}
+                              </span>
+                            </div>
+
+                            <div className="flex justify-between gap-4">
+                              <span className="text-slate-500">
+                                Model
+                              </span>
+
+                              <span className="font-semibold text-right">
+                                {assignedDriver.vehicleModel || "-"}
+                              </span>
+                            </div>
+
+                            <div className="flex justify-between gap-4">
+                              <span className="text-slate-500">
+                                Plate
+                              </span>
+
+                              <span className="font-bold text-right">
+                                {assignedDriver.vehiclePlate || "-"}
+                              </span>
+                            </div>
+
+                          </div>
+
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+
+                          <div className="rounded-2xl bg-white p-4">
+                            <p className="text-xs font-semibold uppercase text-slate-400">
+                              Experience
+                            </p>
+
+                            <p className="mt-1 text-sm font-semibold">
+                              {assignedDriver.experience || "-"}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4">
+                            <p className="text-xs font-semibold uppercase text-slate-400">
+                              Languages
+                            </p>
+
+                            <p className="mt-1 text-sm font-semibold">
+                              {assignedDriver.languages || "-"}
+                            </p>
+                          </div>
+
+                        </div>
+
+                        <div className="flex flex-wrap gap-3">
+
+                          {assignedDriver.phone && (
+                            <a
+                              href={`tel:${assignedDriver.phone}`}
+                              className="rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-100"
+                            >
+                              📞 Call
+                            </a>
+                          )}
+
+                          {assignedDriver.whatsapp && (
+                            <a
+                              href={`https://wa.me/${assignedDriver.whatsapp.replace(
+                                /\D/g,
+                                ""
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded-xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700"
+                            >
+                              💬 WhatsApp
+                            </a>
+                          )}
+
+                        </div>
+
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ================= GUIDE ================= */}
+
+                  {assignedGuide && (
+                    <div className="overflow-hidden rounded-3xl border border-purple-200 bg-purple-50">
+
+                      <div className="border-b border-purple-200 bg-purple-100 p-5">
+
+                        <div className="flex items-center gap-4">
+
+                          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white text-3xl shadow-sm">
+                            🧑‍🏫
+                          </div>
+
+                          <div>
+
+                            <p className="text-xs font-bold uppercase tracking-wide text-purple-700">
+                              Tour Guide
+                            </p>
+
+                            <h4 className="mt-1 text-xl font-bold text-purple-950">
+                              {assignedGuide.name}
+                            </h4>
+
+                            <span className="mt-2 inline-flex rounded-full bg-purple-200 px-3 py-1 text-xs font-bold text-purple-800">
+                              {getGuideStatusLabel()}
+                            </span>
+
+                          </div>
+
+                        </div>
+
+                      </div>
+
+                      <div className="space-y-4 p-5">
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+
+                          <div className="rounded-2xl bg-white p-4">
+                            <p className="text-xs font-semibold uppercase text-slate-400">
+                              Phone
+                            </p>
+
+                            <p className="mt-1 text-sm font-bold">
+                              {assignedGuide.phone || "-"}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4">
+                            <p className="text-xs font-semibold uppercase text-slate-400">
+                              WhatsApp
+                            </p>
+
+                            <p className="mt-1 text-sm font-bold">
+                              {assignedGuide.whatsapp || "-"}
+                            </p>
+                          </div>
+
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+
+                          <div className="rounded-2xl bg-white p-4">
+                            <p className="text-xs font-semibold uppercase text-slate-400">
+                              Experience
+                            </p>
+
+                            <p className="mt-1 text-sm font-semibold">
+                              {assignedGuide.experience || "-"}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white p-4">
+                            <p className="text-xs font-semibold uppercase text-slate-400">
+                              Languages
+                            </p>
+
+                            <p className="mt-1 text-sm font-semibold">
+                              {assignedGuide.languages || "-"}
+                            </p>
+                          </div>
+
+                        </div>
+
+                        {assignedGuide.specialties && (
+                          <div className="rounded-2xl bg-white p-4">
+
+                            <p className="text-xs font-semibold uppercase text-slate-400">
+                              Specialties
+                            </p>
+
+                            <p className="mt-1 text-sm font-semibold">
+                              {assignedGuide.specialties}
+                            </p>
+
+                          </div>
+                        )}
+
+                        {assignedGuide.areas && (
+                          <div className="rounded-2xl bg-white p-4">
+
+                            <p className="text-xs font-semibold uppercase text-slate-400">
+                              Lombok Areas
+                            </p>
+
+                            <p className="mt-1 text-sm font-semibold">
+                              {assignedGuide.areas}
+                            </p>
+
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap gap-3">
+
+                          {assignedGuide.phone && (
+                            <a
+                              href={`tel:${assignedGuide.phone}`}
+                              className="rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-100"
+                            >
+                              📞 Call
+                            </a>
+                          )}
+
+                          {assignedGuide.whatsapp && (
+                            <a
+                              href={`https://wa.me/${assignedGuide.whatsapp.replace(
+                                /\D/g,
+                                ""
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="rounded-xl bg-purple-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-purple-700"
+                            >
+                              💬 WhatsApp
+                            </a>
+                          )}
+
+                        </div>
+
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              </div>
+            )}
+
+            {/* ================================================= */}
+            {/* DAY PLANS */}
+            {/* ================================================= */}
+
+            {dayPlans.map((plan, index) => {
+              const day = index + 1;
+              const photos =
+                dayPhotos[day] || [];
+
+              return (
+                <div
+                  key={day}
+                  className="overflow-hidden rounded-3xl border border-slate-200"
+                >
+
+                  <div className="border-b border-slate-200 bg-slate-50 p-5">
+
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+
+                      <div>
+
+                        <p className="text-sm font-bold text-blue-600">
+                          DAY {day}
+                        </p>
+
+                        <h3 className="mt-1 text-xl font-bold">
+                          {plan.title}
+                        </h3>
+
+                      </div>
+
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 shadow-sm">
+                        {day === 1
+                          ? formatDate(startDate)
+                          : day === totalDays
+                          ? formatDate(endDate)
+                          : `Day ${day}`}
+                      </span>
+
+                    </div>
+
+                  </div>
+
+                  {photos.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2 p-2 sm:grid-cols-3">
+
+                      {photos
+                        .slice(0, 3)
+                        .map(
+                          (
+                            photo,
+                            photoIndex
+                          ) => (
+                            <button
+                              key={`${photo.url}-${photoIndex}`}
+                              type="button"
+                              onClick={() =>
+                                openGallery(
+                                  photos,
+                                  photoIndex
+                                )
+                              }
+                              className="group relative h-40 overflow-hidden rounded-2xl sm:h-48"
+                            >
+
+                              <img
+                                src={photo.url}
+                                alt={photo.title}
+                                className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                              />
+
+                              <div className="absolute inset-0 bg-black/0 transition group-hover:bg-black/20" />
+
+                            </button>
+                          )
+                        )}
+
+                    </div>
+                  )}
+
+                  <div className="grid gap-4 p-5 md:grid-cols-3">
+
+                    <div className="rounded-2xl bg-amber-50 p-4">
+
+                      <div className="mb-2 text-2xl">
+                        🌅
+                      </div>
+
+                      <p className="text-xs font-bold uppercase tracking-wide text-amber-700">
+                        Morning
+                      </p>
+
+                      <p className="mt-2 text-sm leading-6 text-slate-700">
+                        {plan.morning}
+                      </p>
+
+                    </div>
+
+                    <div className="rounded-2xl bg-blue-50 p-4">
+
+                      <div className="mb-2 text-2xl">
+                        ☀️
+                      </div>
+
+                      <p className="text-xs font-bold uppercase tracking-wide text-blue-700">
+                        Afternoon
+                      </p>
+
+                      <p className="mt-2 text-sm leading-6 text-slate-700">
+                        {plan.afternoon}
+                      </p>
+
+                    </div>
+
+                    <div className="rounded-2xl bg-indigo-50 p-4">
+
+                      <div className="mb-2 text-2xl">
+                        🌙
+                      </div>
+
+                      <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">
+                        Evening
+                      </p>
+
+                      <p className="mt-2 text-sm leading-6 text-slate-700">
+                        {plan.evening}
+                      </p>
+
+                    </div>
+
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ================================================= */}
+        {/* BUDGET */}
+        {/* ================================================= */}
+
+        <section className="mb-8 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+
+          <div className="mb-6 flex items-start gap-4">
+
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-2xl">
+              💰
+            </div>
+
+            <div>
+
+              <h2 className="text-2xl font-bold">
+                Estimated Trip Budget
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Estimated spending based on your selected
+                travel style.
+              </p>
+
+            </div>
+
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+
+            <div className="rounded-2xl bg-slate-50 p-5">
+
+              <p className="text-sm text-slate-500">
+                Accommodation
+              </p>
+
+              <p className="mt-1 text-xl font-bold">
+                {formatRupiah(
+                  budgetAmount.accommodation
+                )}
+              </p>
+
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-5">
+
+              <p className="text-sm text-slate-500">
+                Food
+              </p>
+
+              <p className="mt-1 text-xl font-bold">
+                {formatRupiah(
+                  budgetAmount.food
+                )}
+              </p>
+
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-5">
+
+              <p className="text-sm text-slate-500">
+                Transportation
+              </p>
+
+              <p className="mt-1 text-xl font-bold">
+                {formatRupiah(
+                  budgetAmount.transportation
+                )}
+              </p>
+
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-5">
+
+              <p className="text-sm text-slate-500">
+                Activities
+              </p>
+
+              <p className="mt-1 text-xl font-bold">
+                {formatRupiah(
+                  budgetAmount.activities
+                )}
+              </p>
+
+            </div>
+
+          </div>
+
+          <div className="mt-5 rounded-2xl bg-blue-600 p-6 text-white">
+
+            <p className="text-sm text-blue-100">
+              Estimated Total
+            </p>
+
+            <p className="mt-1 text-3xl font-bold">
+              {formatRupiah(totalBudget)}
+            </p>
+
+            <p className="mt-2 text-xs text-blue-100">
+              This is an estimate and actual costs may vary.
+            </p>
+
+          </div>
+        </section>
+
+        {/* ================================================= */}
+        {/* PREFERENCES */}
+        {/* ================================================= */}
+
+        <section className="mb-8 grid gap-6 lg:grid-cols-2">
+
+          <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+
+            <h2 className="text-xl font-bold">
+              Your Preferences
+            </h2>
+
+            <div className="mt-5 space-y-4">
+
+              <div>
+
+                <p className="text-xs font-semibold uppercase text-slate-400">
+                  Travel Style
+                </p>
+
+                <p className="mt-1 font-semibold">
+                  {travelStyleLabel()}
+                </p>
+
+              </div>
+
+              <div>
+
+                <p className="text-xs font-semibold uppercase text-slate-400">
+                  Budget
+                </p>
+
+                <p className="mt-1 font-semibold">
+                  {budgetLabel()}
+                </p>
+
+              </div>
+
+              <div>
+
+                <p className="text-xs font-semibold uppercase text-slate-400">
+                  Interests
+                </p>
+
+                {interestList.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+
+                    {interestList.map(
+                      (interest) => (
+                        <span
+                          key={interest}
+                          className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"
+                        >
+                          {interest}
+                        </span>
+                      )
+                    )}
+
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm text-slate-500">
+                    No interests specified.
+                  </p>
                 )}
 
               </div>
 
             </div>
-
-            {/* ==================================
-                BUDGET
-            ================================== */}
-
-            <div
-              className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 md:p-8"
-              style={{
-                animationName: pageLoaded
-                  ? "fadeUp"
-                  : "none",
-                animationDuration:
-                  "0.8s",
-                animationDelay:
-                  "1150ms",
-                animationFillMode:
-                  "forwards",
-                opacity:
-                  pageLoaded
-                    ? undefined
-                    : 0,
-              }}
-            >
-
-              <div className="flex items-center gap-4 mb-7">
-
-                <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center text-2xl transition-all duration-300 hover:scale-110 hover:rotate-3">
-                  💰
-                </div>
-
-                <div>
-
-                  <h2 className="text-2xl font-bold">
-                    Estimated Budget
-                  </h2>
-
-                  <p className="text-sm text-gray-500">
-                    Based on your selected budget
-                  </p>
-
-                </div>
-
-              </div>
-
-              <div className="space-y-4">
-
-                <BudgetRow
-                  icon="🏨"
-                  label="Accommodation"
-                  amount={
-                    budgetAmount.accommodation
-                  }
-                  delay="0ms"
-                />
-
-                <BudgetRow
-                  icon="🍜"
-                  label="Food"
-                  amount={
-                    budgetAmount.food
-                  }
-                  delay="70ms"
-                />
-
-                <BudgetRow
-                  icon="🚗"
-                  label="Transportation"
-                  amount={
-                    budgetAmount.transportation
-                  }
-                  delay="140ms"
-                />
-
-                <BudgetRow
-                  icon="🎯"
-                  label="Activities"
-                  amount={
-                    budgetAmount.activities
-                  }
-                  delay="210ms"
-                />
-
-              </div>
-
-              <div className="border-t border-gray-100 mt-6 pt-6 flex items-center justify-between">
-
-                <span className="font-bold text-lg">
-                  Estimated Total
-                </span>
-
-                <span className="font-bold text-xl text-blue-600">
-                  {formatRupiah(
-                    totalBudget
-                  )}
-                </span>
-
-              </div>
-
-              <p className="text-xs text-gray-400 mt-4">
-                * Estimated only. Actual costs may vary.
-              </p>
-
-            </div>
-
           </div>
 
-          {/* ======================================
-              SIDEBAR
-          ====================================== */}
+          <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
 
-          <div className="space-y-6">
+            <h2 className="text-xl font-bold">
+              Special Requests
+            </h2>
 
-            {/* PREFERENCES */}
+            {specialRequest ? (
+              <div className="mt-5 rounded-2xl bg-slate-50 p-5">
 
-            <div
-              className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6"
-              style={{
-                animationName: pageLoaded
-                  ? "slideRight"
-                  : "none",
-                animationDuration:
-                  "0.8s",
-                animationDelay:
-                  "950ms",
-                animationFillMode:
-                  "forwards",
-                opacity:
-                  pageLoaded
-                    ? undefined
-                    : 0,
-              }}
-            >
-
-              <h2 className="text-lg font-bold mb-5">
-                Your Preferences
-              </h2>
-
-              <div className="space-y-4">
-
-                <Preference
-                  icon="📍"
-                  label="Destination"
-                  value={destination}
-                />
-
-                <Preference
-                  icon="📅"
-                  label="Dates"
-                  value={`${formatDate(
-                    startDate
-                  )} - ${formatDate(
-                    endDate
-                  )}`}
-                />
-
-                <Preference
-                  icon="💰"
-                  label="Budget"
-                  value={budget}
-                />
-
-                <Preference
-                  icon="👥"
-                  label="Travelers"
-                  value={travelers}
-                />
-
-                <Preference
-                  icon="🎯"
-                  label="Interests"
-                  value={
-                    interests ||
-                    "Not specified"
-                  }
-                />
-
-                <Preference
-                  icon="🧳"
-                  label="Travel Style"
-                  value={travelStyle}
-                />
-
-              </div>
-
-            </div>
-
-            {/* SPECIAL REQUEST */}
-
-            {specialRequest && (
-              <div
-                className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6"
-                style={{
-                  animationName: pageLoaded
-                    ? "slideRight"
-                    : "none",
-                  animationDuration:
-                    "0.8s",
-                  animationDelay:
-                    "1050ms",
-                  animationFillMode:
-                    "forwards",
-                  opacity:
-                    pageLoaded
-                      ? undefined
-                      : 0,
-                }}
-              >
-
-                <h2 className="text-lg font-bold mb-3">
-                  💬 Special Request
-                </h2>
-
-                <p className="text-gray-600 leading-6">
+                <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
                   {specialRequest}
                 </p>
 
               </div>
+            ) : (
+              <div className="mt-5 rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">
+                No special requests were added.
+              </div>
             )}
 
-            {/* ACTIONS */}
+          </div>
 
-            <div
-              className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 print:hidden"
-              style={{
-                animationName: pageLoaded
-                  ? "slideRight"
-                  : "none",
-                animationDuration:
-                  "0.8s",
-                animationDelay:
-                  "1150ms",
-                animationFillMode:
-                  "forwards",
-                opacity:
-                  pageLoaded
-                    ? undefined
-                    : 0,
-              }}
-            >
+        </section>
 
-              <h2 className="text-lg font-bold mb-4">
-                Trip Actions
-              </h2>
+        {/* ================================================= */}
+        {/* TRIP FLOW */}
+        {/* ================================================= */}
 
-              <div className="space-y-3">
+        <section className="mb-8 rounded-3xl bg-gradient-to-br from-blue-700 to-cyan-600 p-6 text-white shadow-xl sm:p-8">
 
-                <Link
-                  href="/planner"
-                  className="block w-full text-center px-4 py-3 rounded-xl bg-blue-50 text-blue-600 font-semibold hover:bg-blue-100 hover:-translate-y-1 hover:shadow-sm active:scale-95 transition-all duration-200"
-                >
-                  ✏️ Plan Another Trip
-                </Link>
+          <p className="text-sm font-semibold uppercase tracking-wide text-blue-100">
+            Your Lombok Journey
+          </p>
 
-                <Link
-                  href="/trips"
-                  className="block w-full text-center px-4 py-3 rounded-xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 hover:-translate-y-1 hover:shadow-sm active:scale-95 transition-all duration-200"
-                >
-                  🧳 My Trips
-                </Link>
+          <h2 className="mt-2 text-2xl font-bold sm:text-3xl">
+            From arrival to departure
+          </h2>
 
-                <button
-                  onClick={() =>
-                    setShowDeleteConfirm(
-                      true
-                    )
-                  }
-                  className="w-full px-4 py-3 rounded-xl border border-red-100 text-red-500 font-semibold hover:bg-red-50 hover:border-red-200 hover:-translate-y-1 active:scale-95 transition-all duration-200"
-                >
-                  🗑️ Delete Trip
-                </button>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
 
+            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+
+              <div className="text-2xl">
+                ✈️
               </div>
+
+              <p className="mt-3 font-bold">
+                Arrival
+              </p>
+
+              <p className="mt-1 text-xs text-blue-100">
+                Arrive at Lombok International Airport.
+              </p>
 
             </div>
 
-            {/* TIP */}
+            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
 
-            <div
-              className="bg-blue-600 rounded-3xl p-6 text-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-              style={{
-                animationName: pageLoaded
-                  ? "slideRight"
-                  : "none",
-                animationDuration:
-                  "0.8s",
-                animationDelay:
-                  "1250ms",
-                animationFillMode:
-                  "forwards",
-                opacity:
-                  pageLoaded
-                    ? undefined
-                    : 0,
-              }}
-            >
-
-              <div className="text-3xl transition-transform duration-300 hover:scale-110">
-                💡
+              <div className="text-2xl">
+                🚗
               </div>
 
-              <h2 className="text-xl font-bold mt-3">
-                Travel Tip
-              </h2>
+              <p className="mt-3 font-bold">
+                Pickup
+              </p>
 
-              <p className="text-blue-100 text-sm leading-6 mt-2">
-                Keep your schedule flexible so you can discover unexpected places and experiences during your trip.
+              <p className="mt-1 text-xs text-blue-100">
+                Continue to your accommodation.
+              </p>
+
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+
+              <div className="text-2xl">
+                🏨
+              </div>
+
+              <p className="mt-3 font-bold">
+                Stay
+              </p>
+
+              <p className="mt-1 text-xs text-blue-100">
+                Check in and settle into your stay.
+              </p>
+
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+
+              <div className="text-2xl">
+                🏝️
+              </div>
+
+              <p className="mt-3 font-bold">
+                Explore
+              </p>
+
+              <p className="mt-1 text-xs text-blue-100">
+                Enjoy your Lombok itinerary.
+              </p>
+
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+
+              <div className="text-2xl">
+                🛫
+              </div>
+
+              <p className="mt-3 font-bold">
+                Departure
+              </p>
+
+              <p className="mt-1 text-xs text-blue-100">
+                Return to the airport for your flight
+                home.
+              </p>
+
+            </div>
+
+          </div>
+        </section>
+
+        {/* ================================================= */}
+        {/* ACTIONS */}
+        {/* ================================================= */}
+
+        <section className="mb-10 grid gap-4 sm:grid-cols-3 print:hidden">
+
+          <Link
+            href="/planner"
+            className="rounded-2xl bg-blue-600 px-5 py-4 text-center font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700"
+          >
+            Plan Another Trip
+          </Link>
+
+          <Link
+            href="/trips"
+            className="rounded-2xl border border-slate-300 bg-white px-5 py-4 text-center font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            My Trips
+          </Link>
+
+          <Link
+            href="/dashboard"
+            className="rounded-2xl border border-slate-300 bg-white px-5 py-4 text-center font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            Dashboard
+          </Link>
+
+        </section>
+
+        {/* ================================================= */}
+        {/* TRAVEL TIP */}
+        {/* ================================================= */}
+
+        <section className="mb-10 rounded-3xl border border-blue-100 bg-blue-50 p-6">
+
+          <div className="flex items-start gap-4">
+
+            <div className="text-3xl">
+              💡
+            </div>
+
+            <div>
+
+              <h3 className="font-bold text-blue-900">
+                Lombok Travel Tip
+              </h3>
+
+              <p className="mt-2 text-sm leading-7 text-blue-800">
+                Simpan informasi penerbangan, hotel,
+                driver dan meeting point di halaman ini.
+                Jika driver atau Tour Guide sudah menerima
+                request perjalananmu, detail mereka akan
+                muncul di bagian Travel Team pada itinerary.
               </p>
 
             </div>
 
           </div>
 
-        </div>
+        </section>
 
-      </section>
+        {/* ================================================= */}
+        {/* CUSTOMER SERVICE */}
+        {/* ================================================= */}
 
-      {/* ======================================
-          DELETE MODAL
-      ====================================== */}
+        <CustomerService tripId={tripId} />
 
-      {showDeleteConfirm && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center px-6 z-[100] print:hidden"
-          onClick={() =>
-            setShowDeleteConfirm(false)
-          }
-        >
+      </div>
 
-          <div
-            className="bg-white rounded-3xl p-7 max-w-md w-full shadow-2xl animate-modal-in"
-            onClick={(event) =>
-              event.stopPropagation()
-            }
-          >
+      {/* =================================================== */}
+      {/* DELETE MODAL */}
+      {/* =================================================== */}
 
-            <div className="text-4xl mb-4">
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 print:hidden">
+
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+
+            <div className="mb-4 text-4xl">
               🗑️
             </div>
 
@@ -1836,264 +3139,113 @@ function TripContent() {
               Delete this trip?
             </h2>
 
-            <p className="text-gray-500 mt-3 leading-6">
-              This trip will be removed from your saved trips. This action cannot be undone.
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              This will remove this Lombok trip from
+              your My Trips list. This action cannot be
+              undone.
             </p>
 
-            <div className="flex gap-3 mt-7">
+            <div className="mt-6 flex gap-3">
 
               <button
                 onClick={() =>
-                  setShowDeleteConfirm(
-                    false
-                  )
+                  setShowDeleteModal(false)
                 }
-                className="flex-1 px-4 py-3 rounded-xl border border-gray-200 font-semibold text-gray-700 hover:bg-gray-50 hover:-translate-y-0.5 active:scale-95 transition-all duration-200"
+                className="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-semibold"
               >
                 Cancel
               </button>
 
               <button
                 onClick={deleteTrip}
-                className="flex-1 px-4 py-3 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 hover:-translate-y-0.5 hover:shadow-lg active:scale-95 transition-all duration-200"
+                className="flex-1 rounded-xl bg-red-600 px-4 py-3 font-semibold text-white hover:bg-red-700"
               >
-                Delete
+                Delete Trip
               </button>
 
             </div>
 
           </div>
-
         </div>
       )}
 
-      {/* ======================================
-          FULLSCREEN GALLERY
-      ====================================== */}
+      {/* =================================================== */}
+      {/* FULLSCREEN GALLERY */}
+      {/* =================================================== */}
 
       {galleryOpen &&
-        galleryDay !== null &&
-        dayPhotos[galleryDay] &&
-        dayPhotos[galleryDay].length > 0 && (
-          <div
-            className="fixed inset-0 z-[200] bg-black/95 flex flex-col print:hidden animate-gallery-in"
-            onClick={closeGallery}
-          >
+        activeGallery.length > 0 && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4">
 
-            {/* TOP BAR */}
-
-            <div
-              className="flex items-center justify-between px-5 md:px-8 py-5 text-white"
-              onClick={(event) =>
-                event.stopPropagation()
+            <button
+              type="button"
+              onClick={() =>
+                setGalleryOpen(false)
               }
+              className="absolute right-5 top-5 z-10 rounded-full bg-white/10 px-4 py-3 text-2xl text-white backdrop-blur transition hover:bg-white/20"
             >
+              ×
+            </button>
 
-              <div>
-
-                <p className="text-sm text-white/60">
-                  Day {galleryDay}
-                </p>
-
-                <h2 className="font-bold text-lg md:text-xl">
-                  {destination}
-                </h2>
-
-              </div>
-
-              <button
-                type="button"
-                onClick={closeGallery}
-                className="w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 hover:scale-110 active:scale-95 flex items-center justify-center text-2xl transition-all duration-200"
-              >
-                ×
-              </button>
-
-            </div>
-
-            {/* MAIN IMAGE */}
-
-            <div
-              className="flex-1 relative flex items-center justify-center px-5 md:px-20"
-              onClick={(event) =>
-                event.stopPropagation()
-              }
+            <button
+              type="button"
+              onClick={previousPhoto}
+              className="absolute left-4 top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-2xl text-white backdrop-blur transition hover:bg-white/20"
             >
+              ‹
+            </button>
 
-              <button
-                type="button"
-                onClick={
-                  previousGalleryPhoto
-                }
-                className="absolute left-4 md:left-8 z-10 w-12 h-12 md:w-14 md:h-14 rounded-full bg-white/10 hover:bg-white/20 hover:scale-110 active:scale-95 text-white text-2xl backdrop-blur transition-all duration-200"
-              >
-                ←
-              </button>
+            <div className="flex max-h-[90vh] max-w-6xl flex-col items-center">
 
               <img
                 src={
-                  dayPhotos[
-                    galleryDay
-                  ][galleryIndex]?.url
+                  activeGallery[
+                    activePhotoIndex
+                  ].url
                 }
-                alt={`${destination} gallery`}
-                className="max-h-[70vh] max-w-full object-contain rounded-2xl shadow-2xl select-none animate-gallery-image"
+                alt={
+                  activeGallery[
+                    activePhotoIndex
+                  ].title
+                }
+                className="max-h-[78vh] max-w-full rounded-2xl object-contain"
               />
 
-              <button
-                type="button"
-                onClick={
-                  nextGalleryPhoto
+              <p className="mt-4 max-w-xl text-center text-sm text-white/80">
+                {
+                  activeGallery[
+                    activePhotoIndex
+                  ].title
                 }
-                className="absolute right-4 md:right-8 z-10 w-12 h-12 md:w-14 md:h-14 rounded-full bg-white/10 hover:bg-white/20 hover:scale-110 active:scale-95 text-white text-2xl backdrop-blur transition-all duration-200"
-              >
-                →
-              </button>
+              </p>
+
+              <p className="mt-2 text-xs text-white/50">
+                {activePhotoIndex + 1} /{" "}
+                {activeGallery.length}
+              </p>
 
             </div>
 
-            {/* COUNTER */}
-
-            <div className="text-center text-white/70 text-sm pb-3">
-              {galleryIndex + 1} /{" "}
-              {dayPhotos[galleryDay].length}
-              {" "}• Auto slideshow
-            </div>
-
-            {/* THUMBNAILS */}
-
-            <div
-              className="flex gap-3 overflow-x-auto px-5 md:px-10 pb-6 justify-center"
-              onClick={(event) =>
-                event.stopPropagation()
-              }
+            <button
+              type="button"
+              onClick={nextPhoto}
+              className="absolute right-4 top-1/2 z-10 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-2xl text-white backdrop-blur transition hover:bg-white/20"
             >
-
-              {dayPhotos[
-                galleryDay
-              ].map(
-                (
-                  photo,
-                  index
-                ) => (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() =>
-                      setGalleryIndex(
-                        index
-                      )
-                    }
-                    className={`flex-shrink-0 w-20 h-14 md:w-24 md:h-16 rounded-xl overflow-hidden border-2 transition-all duration-200 ${
-                      galleryIndex ===
-                      index
-                        ? "border-white scale-105 shadow-lg"
-                        : "border-white/20 opacity-60 hover:opacity-100 hover:scale-105"
-                    }`}
-                  >
-                    <img
-                      src={
-                        photo.url
-                      }
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  </button>
-                )
-              )}
-
-            </div>
+              ›
+            </button>
 
           </div>
         )}
 
-      {/* ======================================
-          ANIMATIONS
-      ====================================== */}
-
-      <style jsx>{`
-        @keyframes fadeUp {
-          from {
-            opacity: 0;
-            transform: translateY(30px);
-          }
-
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes slideRight {
-          from {
-            opacity: 0;
-            transform: translateX(30px);
-          }
-
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-
-        @keyframes modalIn {
-          from {
-            opacity: 0;
-            transform: translateY(25px) scale(0.95);
-          }
-
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-
-        @keyframes galleryIn {
-          from {
-            opacity: 0;
-          }
-
-          to {
-            opacity: 1;
-          }
-        }
-
-        @keyframes galleryImage {
-          from {
-            opacity: 0;
-            transform: scale(0.96);
-          }
-
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-
-        .animate-fade-up {
-          animation: fadeUp 0.7s ease-out forwards;
-        }
-
-        .animate-modal-in {
-          animation: modalIn 0.3s ease-out forwards;
-        }
-
-        .animate-gallery-in {
-          animation: galleryIn 0.3s ease-out forwards;
-        }
-
-        .animate-gallery-image {
-          animation: galleryImage 0.4s ease-out forwards;
-        }
-      `}</style>
-
-      {/* ======================================
-          PRINT
-      ====================================== */}
+      {/* =================================================== */}
+      {/* PRINT CSS */}
+      {/* =================================================== */}
 
       <style jsx global>{`
         @media print {
           nav,
+          header,
+          footer,
           button,
           .print\\:hidden {
             display: none !important;
@@ -2106,29 +3258,26 @@ function TripContent() {
           main {
             background: white !important;
           }
+
+          section {
+            break-inside: avoid;
+          }
         }
       `}</style>
-
     </main>
   );
 }
 
-// ==========================================
-// PAGE WRAPPER
-// ==========================================
-
 export default function TripPage() {
   return (
-    <React.Suspense
+    <Suspense
       fallback={
-        <main className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <main className="flex min-h-screen items-center justify-center bg-slate-50">
           <div className="text-center">
 
-            <div className="text-5xl mb-4 animate-pulse">
-              ✈️
-            </div>
+            <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
 
-            <p className="text-gray-500 font-medium">
+            <p className="text-sm text-slate-500">
               Loading your trip...
             </p>
 
@@ -2137,191 +3286,6 @@ export default function TripPage() {
       }
     >
       <TripContent />
-    </React.Suspense>
-  );
-}
-
-// ==========================================
-// INFO CARD
-// ==========================================
-
-function InfoCard({
-  icon,
-  title,
-  value,
-  delay,
-  loaded,
-}: {
-  icon: string;
-  title: string;
-  value: string;
-  delay: string;
-  loaded: boolean;
-}) {
-  return (
-    <div
-      className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
-      style={{
-        animationName: loaded
-          ? "fadeUp"
-          : "none",
-        animationDuration: "0.7s",
-        animationDelay: delay,
-        animationFillMode:
-          "forwards",
-        opacity: loaded
-          ? undefined
-          : 0,
-      }}
-    >
-
-      <div className="text-2xl transition-transform duration-300 hover:scale-110">
-        {icon}
-      </div>
-
-      <p className="text-xs text-gray-500 mt-3">
-        {title}
-      </p>
-
-      <p className="font-bold mt-1">
-        {value}
-      </p>
-
-    </div>
-  );
-}
-
-// ==========================================
-// ACTIVITY
-// ==========================================
-
-function Activity({
-  time,
-  icon,
-  text,
-  delay,
-}: {
-  time: string;
-  icon: string;
-  text: string;
-  delay: string;
-}) {
-  return (
-    <div
-      className="bg-gray-50 rounded-2xl p-4 transition-all duration-300 hover:bg-blue-50 hover:-translate-y-1 hover:shadow-sm"
-      style={{
-        animationName: "fadeUp",
-        animationDuration: "0.6s",
-        animationDelay: delay,
-        animationFillMode: "forwards",
-      }}
-    >
-
-      <div className="flex items-center gap-3">
-
-        <span className="text-xl transition-transform duration-300 hover:scale-110">
-          {icon}
-        </span>
-
-        <span className="text-sm font-bold">
-          {time}
-        </span>
-
-      </div>
-
-      <p className="text-sm text-gray-600 mt-2 leading-6">
-        {text}
-      </p>
-
-    </div>
-  );
-}
-
-// ==========================================
-// PREFERENCE
-// ==========================================
-
-function Preference({
-  icon,
-  label,
-  value,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex gap-3 transition-all duration-200 hover:translate-x-1">
-
-      <span className="text-lg">
-        {icon}
-      </span>
-
-      <div className="min-w-0">
-
-        <p className="text-xs text-gray-400">
-          {label}
-        </p>
-
-        <p className="text-sm font-medium text-gray-700 break-words">
-          {value}
-        </p>
-
-      </div>
-
-    </div>
-  );
-}
-
-// ==========================================
-// BUDGET ROW
-// ==========================================
-
-function BudgetRow({
-  icon,
-  label,
-  amount,
-  delay,
-}: {
-  icon: string;
-  label: string;
-  amount: number;
-  delay: string;
-}) {
-  return (
-    <div
-      className="flex items-center justify-between gap-4 p-4 bg-gray-50 rounded-2xl transition-all duration-300 hover:bg-blue-50 hover:-translate-y-1 hover:shadow-sm"
-      style={{
-        animationName: "fadeUp",
-        animationDuration: "0.6s",
-        animationDelay: delay,
-        animationFillMode: "forwards",
-      }}
-    >
-
-      <div className="flex items-center gap-3">
-
-        <span className="text-xl transition-transform duration-300 hover:scale-110">
-          {icon}
-        </span>
-
-        <span className="text-sm font-medium text-gray-700">
-          {label}
-        </span>
-
-      </div>
-
-      <span className="text-sm font-bold text-gray-900">
-        {new Intl.NumberFormat(
-          "id-ID",
-          {
-            style: "currency",
-            currency: "IDR",
-            maximumFractionDigits: 0,
-          }
-        ).format(amount)}
-      </span>
-
-    </div>
+    </Suspense>
   );
 }

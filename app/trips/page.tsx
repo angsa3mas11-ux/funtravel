@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Navbar from "@/components/Navbar";
+import Navbar from "../../components/Navbar";
+import CustomerService from "../../components/CustomerService";
 
 type User = {
   id: string;
@@ -13,8 +14,8 @@ type User = {
 
 type Trip = {
   id: string;
-  userId?: string;
-  userEmail?: string;
+  userId: string;
+  userEmail: string;
   destination: string;
   startDate: string;
   endDate: string;
@@ -24,839 +25,1333 @@ type Trip = {
   travelStyle: string;
   specialRequest: string;
   createdAt: string;
+
+  hasFlight?: string;
+
+  arrivalFlight?: string;
+  arrivalDate?: string;
+  arrivalTime?: string;
+
+  departureFlight?: string;
+  departureDate?: string;
+  departureTime?: string;
+
+  airportPickup?: string;
+
+  accommodationType?: string;
+  hotelName?: string;
+  hotelAddress?: string;
+  bookingNumber?: string;
+
+  driverId?: string;
+  driverName?: string;
+  driverPhoto?: string;
+  driverPhone?: string;
+  driverWhatsapp?: string;
+  driverRating?: string;
+  vehicle?: string;
+  plateNumber?: string;
+  meetingPoint?: string;
 };
 
 type DestinationImage = {
-  [key: string]: string;
+  url: string;
+  title: string;
+};
+
+type TripStatus = {
+  label: string;
+  description: string;
+  color: string;
+  icon: string;
 };
 
 export default function TripsPage() {
   const router = useRouter();
 
-  const [user, setUser] =
-    useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [images, setImages] = useState<Record<string, DestinationImage>>(
+    {}
+  );
 
-  const [trips, setTrips] =
-    useState<Trip[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
 
-  const [images, setImages] =
-    useState<DestinationImage>({});
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [pageLoaded, setPageLoaded] =
-    useState(false);
-
-  const [deletingTripId, setDeletingTripId] =
-    useState<string | null>(null);
+  // =========================================================
+  // AUTH + LOAD TRIPS
+  // =========================================================
 
   useEffect(() => {
-    loadTrips();
-  }, []);
+    const loggedIn = localStorage.getItem("funtravel_logged_in");
+    const currentUser = localStorage.getItem("funtravel_current_user");
 
-  useEffect(() => {
-    if (!loading) {
-      const timer = setTimeout(() => {
-        setPageLoaded(true);
-      }, 100);
-
-      return () => clearTimeout(timer);
-    }
-  }, [loading]);
-
-  async function loadTrips() {
-    const loggedIn =
-      localStorage.getItem(
-        "funtravel_logged_in"
-      );
-
-    if (loggedIn !== "true") {
-      router.push("/login");
-      return;
-    }
-
-    const savedUser =
-      localStorage.getItem(
-        "funtravel_current_user"
-      );
-
-    if (!savedUser) {
+    if (loggedIn !== "true" || !currentUser) {
       router.push("/login");
       return;
     }
 
     try {
-      const currentUser: User =
-        JSON.parse(savedUser);
+      const parsedUser: User = JSON.parse(currentUser);
 
-      if (
-        !currentUser.id ||
-        !currentUser.email
-      ) {
-        router.push("/login");
+      if (!parsedUser?.id || !parsedUser?.email) {
+        throw new Error("Invalid user");
+      }
+
+      setUser(parsedUser);
+
+      const storedTrips = localStorage.getItem("funtravel_trips");
+
+      if (!storedTrips) {
+        setTrips([]);
+        setLoading(false);
         return;
       }
 
-      setUser(currentUser);
+      const parsedTrips: Trip[] = JSON.parse(storedTrips);
 
-      const savedTrips =
-        localStorage.getItem(
-          "funtravel_trips"
-        );
-
-      let allTrips: Trip[] = [];
-
-      if (savedTrips) {
-        try {
-          allTrips =
-            JSON.parse(savedTrips);
-        } catch {
-          allTrips = [];
-        }
+      if (!Array.isArray(parsedTrips)) {
+        setTrips([]);
+        setLoading(false);
+        return;
       }
 
-      const updatedTrips =
-        allTrips.map((trip) => {
-          if (
-            !trip.userId &&
-            trip.userEmail ===
-              currentUser.email
-          ) {
-            return {
-              ...trip,
-              userId:
-                currentUser.id,
-            };
-          }
+      // =====================================================
+      // MIGRATION
+      // Some older trips may not have userId.
+      // Match them using userEmail.
+      // =====================================================
 
-          return trip;
-        });
+      const migratedTrips = parsedTrips.map((trip) => {
+        if (
+          (!trip.userId || trip.userId === "") &&
+          trip.userEmail?.toLowerCase() ===
+            parsedUser.email.toLowerCase()
+        ) {
+          return {
+            ...trip,
+            userId: parsedUser.id,
+          };
+        }
 
-      localStorage.setItem(
-        "funtravel_trips",
-        JSON.stringify(updatedTrips)
+        return trip;
+      });
+
+      const userTrips = migratedTrips.filter(
+        (trip) =>
+          trip.userId === parsedUser.id ||
+          trip.userEmail?.toLowerCase() ===
+            parsedUser.email.toLowerCase()
       );
 
-      const userTrips =
-        updatedTrips.filter(
-          (trip) =>
-            trip.userId ===
-            currentUser.id
-        );
+      userTrips.sort((a, b) => {
+        const dateA = new Date(
+          a.createdAt || a.startDate || ""
+        ).getTime();
+
+        const dateB = new Date(
+          b.createdAt || b.startDate || ""
+        ).getTime();
+
+        return dateB - dateA;
+      });
 
       setTrips(userTrips);
 
-      loadDestinationImages(
-        userTrips
+      localStorage.setItem(
+        "funtravel_trips",
+        JSON.stringify(migratedTrips)
       );
+
+      setLoading(false);
     } catch {
-      localStorage.removeItem(
-        "funtravel_current_user"
-      );
-
-      localStorage.removeItem(
-        "funtravel_logged_in"
-      );
-
+      localStorage.removeItem("funtravel_logged_in");
+      localStorage.removeItem("funtravel_current_user");
       router.push("/login");
-      return;
     }
+  }, [router]);
 
-    setLoading(false);
-  }
+  // =========================================================
+  // LOMBOK DESTINATION IMAGE
+  // =========================================================
 
-  async function loadDestinationImages(
-    userTrips: Trip[]
-  ) {
-    const uniqueDestinations = [
-      ...new Set(
-        userTrips.map(
-          (trip) =>
-            trip.destination
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadImages = async () => {
+      const uniqueDestinations = Array.from(
+        new Set(
+          trips
+            .map((trip) => trip.destination)
+            .filter(Boolean)
         )
-      ),
-    ];
+      );
 
-    const imageResults: DestinationImage =
-      {};
+      if (uniqueDestinations.length === 0) {
+        return;
+      }
 
-    await Promise.all(
-      uniqueDestinations.map(
-        async (destination) => {
-          const image =
-            await getDestinationImage(
-              destination
+      const result: Record<string, DestinationImage> = {};
+
+      await Promise.all(
+        uniqueDestinations.map(async (destination) => {
+          try {
+            const query = encodeURIComponent(
+              `${destination} Lombok Indonesia`
             );
 
-          if (image) {
-            imageResults[
-              destination
-            ] = image;
+            const response = await fetch(
+              `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${query}&gsrnamespace=6&gsrlimit=5&prop=imageinfo&iiprop=url&iiurlwidth=900&format=json&origin=*`
+            );
+
+            if (!response.ok) return;
+
+            const data = await response.json();
+
+            const pages = data?.query?.pages
+              ? Object.values(data.query.pages)
+              : [];
+
+            const first = pages[0] as any;
+
+            const url =
+              first?.imageinfo?.[0]?.thumburl ||
+              first?.imageinfo?.[0]?.url;
+
+            if (url) {
+              result[destination] = {
+                url,
+                title:
+                  first.title?.replace("File:", "") ||
+                  destination,
+              };
+            }
+          } catch {
+            // Ignore image errors.
           }
-        }
-      )
-    );
+        })
+      );
 
-    setImages(imageResults);
-  }
-
-  async function getDestinationImage(
-    destination: string
-  ) {
-    try {
-      const searchQuery =
-        encodeURIComponent(
-          `${destination} Lombok Indonesia`
-        );
-
-      const url =
-        `https://commons.wikimedia.org/w/api.php` +
-        `?action=query` +
-        `&generator=search` +
-        `&gsrsearch=${searchQuery}` +
-        `&gsrnamespace=6` +
-        `&gsrlimit=10` +
-        `&prop=imageinfo` +
-        `&iiprop=url` +
-        `&iiurlwidth=900` +
-        `&format=json` +
-        `&origin=*`;
-
-      const response =
-        await fetch(url);
-
-      if (!response.ok) {
-        return null;
+      if (!cancelled) {
+        setImages(result);
       }
+    };
 
-      const data =
-        await response.json();
+    loadImages();
 
-      const pages =
-        data?.query?.pages;
+    return () => {
+      cancelled = true;
+    };
+  }, [trips]);
 
-      if (!pages) {
-        return null;
-      }
+  // =========================================================
+  // DATE HELPERS
+  // =========================================================
 
-      const pageList =
-        Object.values(
-          pages
-        ) as any[];
+  const formatDate = (value: string) => {
+    if (!value) return "-";
 
-      const validImage =
-        pageList.find(
-          (page) =>
-            page?.imageinfo?.[0]
-              ?.thumburl
-        );
+    const date = new Date(`${value}T00:00:00`);
 
-      if (
-        !validImage?.imageinfo?.[0]
-          ?.thumburl
-      ) {
-        return null;
-      }
-
-      return validImage.imageinfo[0]
-        .thumburl;
-    } catch {
-      return null;
-    }
-  }
-
-  function formatDate(
-    date: string
-  ) {
-    if (!date) return "-";
-
-    const parsedDate =
-      new Date(date);
-
-    if (
-      isNaN(
-        parsedDate.getTime()
-      )
-    ) {
-      return date;
+    if (Number.isNaN(date.getTime())) {
+      return value;
     }
 
-    return parsedDate.toLocaleDateString(
-      "en-US",
-      {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }
-    );
-  }
+    return date.toLocaleDateString("en-US", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
 
-  function calculateDays(
-    startDate: string,
-    endDate: string
-  ) {
-    if (!startDate || !endDate) {
+  const formatFullDate = (value: string) => {
+    if (!value) return "-";
+
+    const date = new Date(`${value}T00:00:00`);
+
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+
+    return date.toLocaleDateString("en-US", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  const getDuration = (trip: Trip) => {
+    if (!trip.startDate || !trip.endDate) {
       return 1;
     }
 
-    const start =
-      new Date(startDate);
+    const start = new Date(
+      `${trip.startDate}T00:00:00`
+    );
 
-    const end =
-      new Date(endDate);
+    const end = new Date(
+      `${trip.endDate}T00:00:00`
+    );
 
     const difference =
-      end.getTime() -
-      start.getTime();
+      end.getTime() - start.getTime();
 
-    const days =
+    return Math.max(
+      1,
       Math.ceil(
-        difference /
-          (1000 * 60 * 60 * 24)
-      ) + 1;
+        difference / (1000 * 60 * 60 * 24)
+      ) + 1
+    );
+  };
 
-    return days > 0
-      ? days
-      : 1;
-  }
+  // =========================================================
+  // STATUS
+  // =========================================================
 
-  function viewTrip(
-    trip: Trip
-  ) {
-    const params =
-      new URLSearchParams();
+  const getTripStatus = (trip: Trip): TripStatus => {
+    const now = new Date();
+
+    const start = trip.startDate
+      ? new Date(`${trip.startDate}T00:00:00`)
+      : null;
+
+    const end = trip.endDate
+      ? new Date(`${trip.endDate}T23:59:59`)
+      : null;
+
+    if (end && now > end) {
+      return {
+        label: "Trip Completed",
+        description: "Your Lombok journey has been completed.",
+        color: "bg-green-100 text-green-700",
+        icon: "✓",
+      };
+    }
+
+    if (start && end && now >= start && now <= end) {
+      return {
+        label: "Trip In Progress",
+        description: "Enjoy your Lombok adventure!",
+        color: "bg-blue-100 text-blue-700",
+        icon: "🏝️",
+      };
+    }
+
+    if (trip.driverName || trip.driverId) {
+      return {
+        label: "Driver Assigned",
+        description: "Your airport pickup driver is ready.",
+        color: "bg-green-100 text-green-700",
+        icon: "🚗",
+      };
+    }
+
+    if (trip.airportPickup === "funtravel") {
+      return {
+        label: "Preparing Your Trip",
+        description: "FunTravel is preparing your journey.",
+        color: "bg-blue-100 text-blue-700",
+        icon: "🛠️",
+      };
+    }
+
+    return {
+      label: "Trip Ready",
+      description: "Your Lombok trip has been planned.",
+      color: "bg-indigo-100 text-indigo-700",
+      icon: "✓",
+    };
+  };
+
+  // =========================================================
+  // TRIP GROUPS
+  // =========================================================
+
+  const upcomingTrips = useMemo(() => {
+    const now = new Date();
+
+    return trips.filter((trip) => {
+      if (!trip.endDate) return true;
+
+      const end = new Date(
+        `${trip.endDate}T23:59:59`
+      );
+
+      return end >= now;
+    });
+  }, [trips]);
+
+  const completedTrips = useMemo(() => {
+    const now = new Date();
+
+    return trips.filter((trip) => {
+      if (!trip.endDate) return false;
+
+      const end = new Date(
+        `${trip.endDate}T23:59:59`
+      );
+
+      return end < now;
+    });
+  }, [trips]);
+
+  const activeTrip = useMemo(() => {
+    const now = new Date();
+
+    return (
+      trips.find((trip) => {
+        if (!trip.startDate || !trip.endDate) {
+          return false;
+        }
+
+        const start = new Date(
+          `${trip.startDate}T00:00:00`
+        );
+
+        const end = new Date(
+          `${trip.endDate}T23:59:59`
+        );
+
+        return now >= start && now <= end;
+      }) ||
+      upcomingTrips[0] ||
+      null
+    );
+  }, [trips, upcomingTrips]);
+
+  const uniqueDestinations = useMemo(() => {
+    return new Set(
+      trips.map((trip) =>
+        trip.destination.trim().toLowerCase()
+      )
+    ).size;
+  }, [trips]);
+
+  // =========================================================
+  // VIEW TRIP
+  // =========================================================
+
+  const viewTrip = (trip: Trip) => {
+    const params = new URLSearchParams();
+
+    params.set("tripId", trip.id);
+
+    params.set("userId", trip.userId || "");
+    params.set("userEmail", trip.userEmail || "");
 
     params.set(
       "destination",
-      trip.destination
+      trip.destination || "Lombok"
     );
 
-    params.set(
-      "startDate",
-      trip.startDate
-    );
+    params.set("startDate", trip.startDate || "");
+    params.set("endDate", trip.endDate || "");
+    params.set("travelers", trip.travelers || "1");
 
-    params.set(
-      "endDate",
-      trip.endDate
-    );
-
-    params.set(
-      "travelers",
-      trip.travelers
-    );
-
-    params.set(
-      "budget",
-      trip.budget
-    );
-
-    params.set(
-      "interests",
-      trip.interests
-    );
-
-    params.set(
-      "travelStyle",
-      trip.travelStyle
-    );
+    params.set("budget", trip.budget || "");
+    params.set("interests", trip.interests || "");
+    params.set("travelStyle", trip.travelStyle || "");
 
     params.set(
       "specialRequest",
-      trip.specialRequest
+      trip.specialRequest || ""
     );
 
-    router.push(
-      `/trip?${params.toString()}`
+    params.set(
+      "hasFlight",
+      trip.hasFlight || "false"
     );
-  }
 
-  function deleteTrip(
-    id: string
-  ) {
-    if (!user) return;
+    params.set(
+      "arrivalFlight",
+      trip.arrivalFlight || ""
+    );
 
-    const confirmed =
-      window.confirm(
-        "Are you sure you want to delete this trip?"
-      );
+    params.set(
+      "arrivalDate",
+      trip.arrivalDate || ""
+    );
 
-    if (!confirmed) return;
+    params.set(
+      "arrivalTime",
+      trip.arrivalTime || ""
+    );
 
-    setDeletingTripId(id);
+    params.set(
+      "departureFlight",
+      trip.departureFlight || ""
+    );
 
-    const savedTrips =
-      localStorage.getItem(
+    params.set(
+      "departureDate",
+      trip.departureDate || ""
+    );
+
+    params.set(
+      "departureTime",
+      trip.departureTime || ""
+    );
+
+    params.set(
+      "airportPickup",
+      trip.airportPickup || ""
+    );
+
+    params.set(
+      "accommodationType",
+      trip.accommodationType || ""
+    );
+
+    params.set(
+      "hotelName",
+      trip.hotelName || ""
+    );
+
+    params.set(
+      "hotelAddress",
+      trip.hotelAddress || ""
+    );
+
+    params.set(
+      "bookingNumber",
+      trip.bookingNumber || ""
+    );
+
+    params.set(
+      "driverId",
+      trip.driverId || ""
+    );
+
+    params.set(
+      "driverName",
+      trip.driverName || ""
+    );
+
+    params.set(
+      "driverPhoto",
+      trip.driverPhoto || ""
+    );
+
+    params.set(
+      "driverPhone",
+      trip.driverPhone || ""
+    );
+
+    params.set(
+      "driverWhatsapp",
+      trip.driverWhatsapp || ""
+    );
+
+    params.set(
+      "driverRating",
+      trip.driverRating || ""
+    );
+
+    params.set(
+      "vehicle",
+      trip.vehicle || ""
+    );
+
+    params.set(
+      "plateNumber",
+      trip.plateNumber || ""
+    );
+
+    params.set(
+      "meetingPoint",
+      trip.meetingPoint || ""
+    );
+
+    router.push(`/trip?${params.toString()}`);
+  };
+
+  // =========================================================
+  // DELETE
+  // =========================================================
+
+  const openDeleteModal = (trip: Trip) => {
+    setSelectedTrip(trip);
+    setShowDeleteModal(true);
+  };
+
+  const closeDeleteModal = () => {
+    if (deletingId) return;
+
+    setShowDeleteModal(false);
+    setSelectedTrip(null);
+  };
+
+  const deleteTrip = () => {
+    if (!selectedTrip) return;
+
+    setDeletingId(selectedTrip.id);
+
+    try {
+      const stored = localStorage.getItem(
         "funtravel_trips"
       );
 
-    if (!savedTrips) {
-      setDeletingTripId(null);
-      return;
-    }
+      if (stored) {
+        const allTrips: Trip[] = JSON.parse(stored);
 
-    let allTrips: Trip[] = [];
+        const filteredTrips = allTrips.filter(
+          (trip) => trip.id !== selectedTrip.id
+        );
 
-    try {
-      allTrips =
-        JSON.parse(savedTrips);
-    } catch {
-      allTrips = [];
-    }
+        localStorage.setItem(
+          "funtravel_trips",
+          JSON.stringify(filteredTrips)
+        );
 
-    const updatedTrips =
-      allTrips.filter(
-        (trip) =>
-          !(
-            trip.id === id &&
-            trip.userId ===
-              user.id
+        setTrips((current) =>
+          current.filter(
+            (trip) => trip.id !== selectedTrip.id
           )
-      );
+        );
+      }
 
-    localStorage.setItem(
-      "funtravel_trips",
-      JSON.stringify(updatedTrips)
-    );
+      setTimeout(() => {
+        setDeletingId(null);
+        setShowDeleteModal(false);
+        setSelectedTrip(null);
+      }, 300);
+    } catch {
+      setDeletingId(null);
+    }
+  };
 
-    setTimeout(() => {
-      setTrips(
-        updatedTrips.filter(
-          (trip) =>
-            trip.userId ===
-            user.id
-        )
-      );
-
-      setDeletingTripId(null);
-    }, 350);
-  }
+  // =========================================================
+  // LOADING
+  // =========================================================
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center">
-
+      <main className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
 
-          <div className="text-5xl mb-4 animate-bounce">
-            🌴
-          </div>
-
-          <p className="text-gray-500 animate-pulse">
+          <p className="text-sm text-slate-500">
             Loading your Lombok trips...
           </p>
-
         </div>
-
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 text-gray-900">
-
+    <main className="min-h-screen bg-slate-50 text-slate-900">
       <Navbar />
 
-      {/* =========================
-          HEADER
-      ========================= */}
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        {/* ================================================= */}
+        {/* HEADER */}
+        {/* ================================================= */}
 
-      <section
-        className="max-w-7xl mx-auto px-6 lg:px-8 pt-12 pb-8"
-        style={{
-          animationName: pageLoaded
-            ? "fadeUp"
-            : "none",
-          animationDuration: "0.7s",
-          animationTimingFunction:
-            "ease-out",
-          animationFillMode: "forwards",
-          opacity: pageLoaded ? undefined : 0,
-        }}
-      >
+        <section className="mb-8 overflow-hidden rounded-3xl bg-gradient-to-r from-blue-700 to-cyan-600 p-6 text-white shadow-xl sm:p-8">
+          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
+            <div>
+              <div className="mb-3 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-bold uppercase tracking-wider">
+                🧳 Your Lombok Collection
+              </div>
 
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+              <h1 className="text-3xl font-bold sm:text-4xl">
+                My Trips
+              </h1>
 
-          <div>
-
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-full text-sm font-semibold transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
-              🧳 Your Lombok Collection
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-blue-50 sm:text-base">
+                Semua perjalanan Lombok kamu tersimpan di satu
+                tempat. Dari persiapan sampai perjalanan selesai.
+              </p>
             </div>
 
-            <h1 className="text-4xl md:text-5xl font-bold mt-5">
-              My Trips
-            </h1>
+            <Link
+              href="/planner"
+              className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-white px-5 py-3.5 font-bold text-blue-700 shadow-lg transition hover:bg-blue-50"
+            >
+              + Plan New Lombok Trip
+            </Link>
+          </div>
+        </section>
 
-            <p className="text-gray-500 mt-3">
-              All your saved Lombok
-              adventures in one place.
+        {/* ================================================= */}
+        {/* STATS */}
+        {/* ================================================= */}
+
+        <section className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="mb-3 text-2xl">🧳</div>
+
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Total Trips
             </p>
 
+            <p className="mt-1 text-2xl font-bold">
+              {trips.length}
+            </p>
           </div>
 
-          <Link
-            href="/planner"
-            className="group inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 hover:-translate-y-1 hover:shadow-lg active:translate-y-0 active:scale-95 transition-all duration-200"
-          >
-            ✨ Plan New Trip
+          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="mb-3 text-2xl">📅</div>
 
-            <span className="transition-transform duration-200 group-hover:translate-x-1">
-              →
-            </span>
-          </Link>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Upcoming
+            </p>
 
-        </div>
+            <p className="mt-1 text-2xl font-bold">
+              {upcomingTrips.length}
+            </p>
+          </div>
 
-      </section>
+          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="mb-3 text-2xl">✓</div>
 
-      {/* =========================
-          TRIPS
-      ========================= */}
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Completed
+            </p>
 
-      <section className="max-w-7xl mx-auto px-6 lg:px-8 pb-16">
+            <p className="mt-1 text-2xl font-bold">
+              {completedTrips.length}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="mb-3 text-2xl">📍</div>
+
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Lombok Destinations
+            </p>
+
+            <p className="mt-1 text-2xl font-bold">
+              {uniqueDestinations}
+            </p>
+          </div>
+        </section>
+
+        {/* ================================================= */}
+        {/* EMPTY */}
+        {/* ================================================= */}
 
         {trips.length === 0 ? (
-
-          <div
-            className="bg-white rounded-3xl border border-gray-100 shadow-sm p-10 md:p-16 text-center"
-            style={{
-              animationName: pageLoaded
-                ? "cardEnter"
-                : "none",
-              animationDuration: "0.8s",
-              animationTimingFunction:
-                "ease-out",
-              animationFillMode: "forwards",
-              opacity: pageLoaded ? undefined : 0,
-            }}
-          >
-
-            <div className="text-6xl mb-5 animate-pulse">
-              🗺️
+          <section className="rounded-3xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200 sm:p-12">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-blue-50 text-4xl">
+              🏝️
             </div>
 
-            <h2 className="text-2xl font-bold">
-              No trips yet
+            <h2 className="mt-6 text-2xl font-bold">
+              No Lombok trips yet
             </h2>
 
-            <p className="text-gray-500 mt-3 max-w-md mx-auto">
-              Start planning your next
-              Lombok adventure and your
-              saved trips will appear here.
+            <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-500">
+              Your saved Lombok adventures will appear here.
+              Start planning your first trip and let FunTravel
+              help organize the journey.
             </p>
 
             <Link
               href="/planner"
-              className="group inline-flex items-center gap-2 mt-7 px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 hover:-translate-y-1 hover:shadow-lg active:scale-95 transition-all duration-200"
+              className="mt-6 inline-flex rounded-2xl bg-blue-600 px-6 py-3.5 font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700"
             >
-              ✈️ Plan My First Trip
-
-              <span className="transition-transform duration-200 group-hover:translate-x-1">
-                →
-              </span>
+              Plan My Lombok Trip →
             </Link>
-
-          </div>
-
+          </section>
         ) : (
+          <>
+            {/* ================================================= */}
+            {/* ACTIVE / NEXT TRIP */}
+            {/* ================================================= */}
 
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-7">
+            {activeTrip && (
+              <section className="mb-8">
+                <div className="mb-4">
+                  <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
+                    {(() => {
+                      const status =
+                        getTripStatus(activeTrip);
 
-            {trips.map(
-              (trip, index) => {
+                      if (
+                        status.label === "Trip In Progress"
+                      ) {
+                        return "Current Trip";
+                      }
 
-                const image =
-                  images[
-                    trip.destination
-                  ];
+                      return "Next Trip";
+                    })()}
+                  </p>
 
-                const days =
-                  calculateDays(
-                    trip.startDate,
-                    trip.endDate
-                  );
+                  <h2 className="mt-1 text-2xl font-bold">
+                    Your Lombok Journey
+                  </h2>
+                </div>
 
-                const isDeleting =
-                  deletingTripId ===
-                  trip.id;
-
-                return (
-                  <article
-                    key={trip.id}
-                    className={`group bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden transition-all duration-500 ${
-                      isDeleting
-                        ? "opacity-0 scale-95 -translate-y-3"
-                        : "opacity-100 hover:shadow-xl hover:-translate-y-2"
-                    }`}
-                    style={{
-                      animationName: pageLoaded
-                        ? "cardEnter"
-                        : "none",
-                      animationDuration:
-                        "0.7s",
-                      animationTimingFunction:
-                        "ease-out",
-                      animationFillMode:
-                        "forwards",
-                      animationDelay:
-                        `${index * 120}ms`,
-                      opacity:
-                        pageLoaded
-                          ? undefined
-                          : 0,
-                    }}
-                  >
-
-                    {/* =========================
-                        IMAGE
-                    ========================= */}
-
-                    <div className="relative h-56 bg-gradient-to-br from-blue-100 to-cyan-50 overflow-hidden">
-
-                      {image ? (
-
+                <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
+                  <div className="grid lg:grid-cols-5">
+                    <div className="relative h-64 lg:col-span-2 lg:h-full lg:min-h-[360px]">
+                      {images[activeTrip.destination] ? (
                         <img
-                          src={image}
-                          alt={`${trip.destination} Lombok`}
-                          className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
-                          onError={(event) => {
-                            event.currentTarget.style.display =
-                              "none";
-                          }}
+                          src={
+                            images[activeTrip.destination].url
+                          }
+                          alt={activeTrip.destination}
+                          className="h-full w-full object-cover"
                         />
-
                       ) : (
-
-                        <div className="w-full h-full flex items-center justify-center transition-transform duration-700 group-hover:scale-105">
-
-                          <div className="text-center">
-
-                            <div className="text-6xl transition-transform duration-500 group-hover:scale-110">
-                              🌴
-                            </div>
-
-                            <p className="text-blue-600 font-bold mt-3">
-                              {trip.destination}
-                            </p>
-
-                          </div>
-
+                        <div className="flex h-full min-h-[260px] items-center justify-center bg-gradient-to-br from-blue-600 to-cyan-500 text-7xl">
+                          🏝️
                         </div>
-
                       )}
 
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-
-                      <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-bold text-blue-600 transition-all duration-300 group-hover:scale-105">
+                      <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-blue-700 shadow-sm">
                         LOMBOK
                       </div>
-
-                      <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-bold text-gray-700 transition-all duration-300 group-hover:scale-105">
-                        {days} Days
-                      </div>
-
-                      <div className="absolute bottom-5 left-5 right-5 text-white">
-
-                        <p className="text-sm opacity-90">
-                          📍 Destination
-                        </p>
-
-                        <h2 className="text-2xl font-bold mt-1">
-                          {trip.destination}
-                        </h2>
-
-                      </div>
-
                     </div>
 
-                    {/* =========================
-                        CONTENT
-                    ========================= */}
-
-                    <div className="p-6">
-
-                      <div className="flex items-center gap-3 mb-5">
-
-                        <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:rotate-3">
-                          📅
-                        </div>
-
+                    <div className="p-6 lg:col-span-3 sm:p-8">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
                         <div>
+                          <h3 className="text-2xl font-bold sm:text-3xl">
+                            {activeTrip.destination}
+                          </h3>
 
-                          <p className="text-xs text-gray-400">
-                            Travel Dates
-                          </p>
-
-                          <p className="text-sm font-semibold text-gray-700">
-                            {formatDate(
-                              trip.startDate
+                          <p className="mt-2 text-sm text-slate-500">
+                            {formatFullDate(
+                              activeTrip.startDate
                             )}{" "}
-                            →{" "}
-                            {formatDate(
-                              trip.endDate
+                            —{" "}
+                            {formatFullDate(
+                              activeTrip.endDate
                             )}
                           </p>
-
                         </div>
 
-                      </div>
+                        {(() => {
+                          const status =
+                            getTripStatus(activeTrip);
 
-                      <div className="grid grid-cols-2 gap-3">
-
-                        <TripDetail
-                          icon="💰"
-                          label="Budget"
-                          value={
-                            trip.budget
-                          }
-                        />
-
-                        <TripDetail
-                          icon="👥"
-                          label="Travelers"
-                          value={
-                            trip.travelers
-                          }
-                        />
-
-                        <TripDetail
-                          icon="🧳"
-                          label="Style"
-                          value={
-                            trip.travelStyle
-                          }
-                        />
-
-                        <TripDetail
-                          icon="🎯"
-                          label="Interest"
-                          value={
-                            trip.interests ||
-                            "Any"
-                          }
-                        />
-
-                      </div>
-
-                      {/* =========================
-                          BUTTONS
-                      ========================= */}
-
-                      <div className="flex gap-3 mt-6">
-
-                        <button
-                          onClick={() =>
-                            viewTrip(
-                              trip
-                            )
-                          }
-                          disabled={isDeleting}
-                          className="group/view flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:scale-95 disabled:opacity-50 transition-all duration-200"
-                        >
-                          <span className="inline-flex items-center justify-center gap-2">
-                            View Trip
-
-                            <span className="transition-transform duration-200 group-hover/view:translate-x-1">
-                              →
+                          return (
+                            <span
+                              className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-bold ${status.color}`}
+                            >
+                              <span>{status.icon}</span>
+                              {status.label}
                             </span>
-                          </span>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl bg-slate-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Duration
+                          </p>
+
+                          <p className="mt-1 font-bold">
+                            {getDuration(activeTrip)}{" "}
+                            {getDuration(activeTrip) === 1
+                              ? "Day"
+                              : "Days"}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl bg-slate-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Travelers
+                          </p>
+
+                          <p className="mt-1 font-bold">
+                            {activeTrip.travelers}{" "}
+                            {Number(
+                              activeTrip.travelers
+                            ) === 1
+                              ? "Person"
+                              : "People"}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl bg-slate-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Flight
+                          </p>
+
+                          <p className="mt-1 font-bold">
+                            {activeTrip.hasFlight === "true"
+                              ? "✓ Added"
+                              : "Not added"}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl bg-slate-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                            Airport Pickup
+                          </p>
+
+                          <p className="mt-1 font-bold">
+                            {activeTrip.airportPickup ===
+                            "funtravel"
+                              ? "FunTravel Pickup"
+                              : "Own Transport"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            viewTrip(activeTrip)
+                          }
+                          className="rounded-2xl bg-blue-600 px-5 py-3 font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700"
+                        >
+                          View My Trip →
                         </button>
 
                         <button
+                          type="button"
                           onClick={() =>
-                            deleteTrip(
-                              trip.id
-                            )
+                            openDeleteModal(activeTrip)
                           }
-                          disabled={isDeleting}
-                          className="group/delete px-4 py-3 border border-red-100 text-red-500 rounded-xl font-semibold hover:bg-red-50 hover:border-red-200 hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 transition-all duration-200"
-                          title="Delete trip"
+                          className="rounded-2xl border border-red-200 bg-white px-5 py-3 font-semibold text-red-600 transition hover:bg-red-50"
                         >
-                          <span className="inline-block transition-transform duration-200 group-hover/delete:scale-110">
-                            {isDeleting
-                              ? "⏳"
-                              : "🗑️"}
-                          </span>
+                          Delete
                         </button>
-
                       </div>
 
-                    </div>
+                      {(() => {
+                        const status =
+                          getTripStatus(activeTrip);
 
-                  </article>
-                );
-              }
+                        return (
+                          <p className="mt-4 text-xs text-slate-400">
+                            {status.description}
+                          </p>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              </section>
             )}
 
-          </div>
+            {/* ================================================= */}
+            {/* UPCOMING */}
+            {/* ================================================= */}
 
+            {upcomingTrips.length > 0 && (
+              <section className="mb-10">
+                <div className="mb-5">
+                  <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
+                    Upcoming
+                  </p>
+
+                  <h2 className="mt-1 text-2xl font-bold">
+                    Upcoming Lombok Trips
+                  </h2>
+                </div>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  {upcomingTrips.map((trip) => {
+                    if (
+                      activeTrip &&
+                      trip.id === activeTrip.id
+                    ) {
+                      return null;
+                    }
+
+                    const status = getTripStatus(trip);
+                    const image = images[trip.destination];
+
+                    return (
+                      <article
+                        key={trip.id}
+                        className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-1 hover:shadow-lg"
+                      >
+                        <div className="relative h-52">
+                          {image ? (
+                            <img
+                              src={image.url}
+                              alt={trip.destination}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center bg-gradient-to-br from-blue-600 to-cyan-500 text-6xl">
+                              🏝️
+                            </div>
+                          )}
+
+                          <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-blue-700 shadow-sm">
+                            LOMBOK
+                          </div>
+
+                          <div
+                            className={`absolute right-4 top-4 rounded-full px-3 py-1.5 text-xs font-bold shadow-sm ${status.color}`}
+                          >
+                            {status.icon} {status.label}
+                          </div>
+                        </div>
+
+                        <div className="p-5">
+                          <h3 className="text-xl font-bold">
+                            {trip.destination}
+                          </h3>
+
+                          <p className="mt-1 text-sm text-slate-500">
+                            {formatDate(trip.startDate)} —{" "}
+                            {formatDate(trip.endDate)}
+                          </p>
+
+                          <div className="mt-4 grid grid-cols-2 gap-3">
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                                Travelers
+                              </p>
+
+                              <p className="mt-1 text-sm font-bold">
+                                {trip.travelers}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                                Duration
+                              </p>
+
+                              <p className="mt-1 text-sm font-bold">
+                                {getDuration(trip)} days
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                                Pickup
+                              </p>
+
+                              <p className="mt-1 text-sm font-bold">
+                                {trip.airportPickup ===
+                                "funtravel"
+                                  ? "FunTravel"
+                                  : "Own"}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                                Hotel
+                              </p>
+
+                              <p className="mt-1 truncate text-sm font-bold">
+                                {trip.hotelName ||
+                                  "Not selected"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="mt-5 flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                viewTrip(trip)
+                              }
+                              className="flex-1 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
+                            >
+                              View Trip
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openDeleteModal(trip)
+                              }
+                              className="rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* ================================================= */}
+            {/* ALL TRIPS */}
+            {/* ================================================= */}
+
+            <section className="mb-10">
+              <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
+                    Your Collection
+                  </p>
+
+                  <h2 className="mt-1 text-2xl font-bold">
+                    All My Lombok Trips
+                  </h2>
+                </div>
+
+                <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200">
+                  {trips.length}{" "}
+                  {trips.length === 1 ? "Trip" : "Trips"}
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                {trips.map((trip) => {
+                  const status = getTripStatus(trip);
+                  const image = images[trip.destination];
+
+                  return (
+                    <article
+                      key={trip.id}
+                      className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:shadow-md"
+                    >
+                      <div className="flex flex-col md:flex-row">
+                        <div className="relative h-52 md:h-auto md:w-64 md:shrink-0">
+                          {image ? (
+                            <img
+                              src={image.url}
+                              alt={trip.destination}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center bg-gradient-to-br from-blue-600 to-cyan-500 text-6xl">
+                              🏝️
+                            </div>
+                          )}
+
+                          <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-blue-700">
+                            LOMBOK
+                          </div>
+                        </div>
+
+                        <div className="flex-1 p-5 sm:p-6">
+                          <div className="flex flex-col justify-between gap-4 lg:flex-row">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="text-xl font-bold">
+                                  {trip.destination}
+                                </h3>
+
+                                <span
+                                  className={`rounded-full px-3 py-1 text-xs font-bold ${status.color}`}
+                                >
+                                  {status.icon}{" "}
+                                  {status.label}
+                                </span>
+                              </div>
+
+                              <p className="mt-2 text-sm text-slate-500">
+                                {formatDate(
+                                  trip.startDate
+                                )}{" "}
+                                —{" "}
+                                {formatDate(
+                                  trip.endDate
+                                )}
+                              </p>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  viewTrip(trip)
+                                }
+                                className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700"
+                              >
+                                View My Trip
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openDeleteModal(trip)
+                                }
+                                className="rounded-xl border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                                Travelers
+                              </p>
+
+                              <p className="mt-1 text-sm font-bold">
+                                {trip.travelers}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                                Duration
+                              </p>
+
+                              <p className="mt-1 text-sm font-bold">
+                                {getDuration(trip)}{" "}
+                                {getDuration(trip) === 1
+                                  ? "Day"
+                                  : "Days"}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                                Travel Style
+                              </p>
+
+                              <p className="mt-1 truncate text-sm font-bold">
+                                {trip.travelStyle ||
+                                  "Not specified"}
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                                Interests
+                              </p>
+
+                              <p className="mt-1 truncate text-sm font-bold">
+                                {trip.interests ||
+                                  "Not specified"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {trip.hasFlight === "true" && (
+                              <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">
+                                ✈️ Flight Added
+                              </span>
+                            )}
+
+                            {trip.airportPickup ===
+                              "funtravel" && (
+                              <span className="rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
+                                🚗 FunTravel Pickup
+                              </span>
+                            )}
+
+                            {trip.airportPickup ===
+                              "own" && (
+                              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">
+                                🚕 Own Transport
+                              </span>
+                            )}
+
+                            {trip.hotelName && (
+                              <span className="rounded-full bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700">
+                                🏨 {trip.hotelName}
+                              </span>
+                            )}
+
+                            {trip.driverName && (
+                              <span className="rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
+                                👨‍✈️ Driver Assigned
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* ================================================= */}
+            {/* FUNTRAVEL PROMISE */}
+            {/* ================================================= */}
+
+            <section className="mb-8 overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white shadow-xl sm:p-8">
+              <div className="max-w-3xl">
+                <div className="mb-3 text-3xl">
+                  🌴
+                </div>
+
+                <h2 className="text-2xl font-bold sm:text-3xl">
+                  You just enjoy Lombok.
+                </h2>
+
+                <p className="mt-3 text-sm leading-7 text-slate-300 sm:text-base">
+                  FunTravel dirancang supaya kamu tidak perlu
+                  bingung mengatur perjalanan sendiri. Mulai dari
+                  kedatangan, airport pickup, hotel, itinerary,
+                  sampai perjalanan pulang.
+                </p>
+
+                <p className="mt-4 font-semibold text-white">
+                  Kamu tinggal berangkat. Urusan perjalanan, biar
+                  kami yang atur.
+                </p>
+              </div>
+            </section>
+          </>
         )}
-
-      </section>
-
-      {/* =========================
-          ANIMATIONS
-      ========================= */}
-
-      <style jsx>{`
-        @keyframes fadeUp {
-          from {
-            opacity: 0;
-            transform: translateY(25px);
-          }
-
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes cardEnter {
-          from {
-            opacity: 0;
-            transform: translateY(45px);
-          }
-
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
-
-    </main>
-  );
-}
-
-function TripDetail({
-  icon,
-  label,
-  value,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="bg-gray-50 rounded-xl p-3 transition-all duration-300 hover:bg-blue-50 hover:-translate-y-0.5">
-
-      <div className="flex items-center gap-2">
-
-        <span className="text-base">
-          {icon}
-        </span>
-
-        <span className="text-xs text-gray-400">
-          {label}
-        </span>
-
       </div>
 
-      <p className="text-sm font-semibold text-gray-700 mt-1 truncate">
-        {value}
-      </p>
+      {/* ===================================================== */}
+      {/* CUSTOMER SERVICE */}
+      {/* ===================================================== */}
 
-    </div>
+      <CustomerService />
+
+      {/* ===================================================== */}
+      {/* DELETE MODAL */}
+      {/* ===================================================== */}
+
+      {showDeleteModal && selectedTrip && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-2xl">
+              🗑️
+            </div>
+
+            <h2 className="mt-5 text-2xl font-bold">
+              Delete this trip?
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Kamu akan menghapus perjalanan{" "}
+              <strong className="text-slate-700">
+                {selectedTrip.destination}
+              </strong>{" "}
+              dari My Trips.
+            </p>
+
+            <p className="mt-2 text-sm text-red-600">
+              Tindakan ini tidak dapat dibatalkan.
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={closeDeleteModal}
+                disabled={Boolean(deletingId)}
+                className="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={deleteTrip}
+                disabled={Boolean(deletingId)}
+                className="flex-1 rounded-xl bg-red-600 px-4 py-3 font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+              >
+                {deletingId
+                  ? "Deleting..."
+                  : "Delete Trip"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
   );
 }

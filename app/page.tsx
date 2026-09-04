@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
+import CustomerService from "@/components/CustomerService";
 
 type Destination = {
   name: string;
@@ -95,9 +96,11 @@ export default function HomePage() {
               const imageInfo = firstPage?.imageinfo?.[0];
 
               if (imageInfo?.thumburl) {
-                results[destination.name] = imageInfo.thumburl;
+                results[destination.name] =
+                  imageInfo.thumburl;
               } else if (imageInfo?.url) {
-                results[destination.name] = imageInfo.url;
+                results[destination.name] =
+                  imageInfo.url;
               }
             }
           } catch (error) {
@@ -117,18 +120,15 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-white text-gray-900">
-
       <Navbar />
 
       {/* HERO */}
       <section className="relative overflow-hidden bg-gray-50">
-
         {/* Decorative background */}
         <div className="pointer-events-none absolute -left-32 top-20 h-72 w-72 rounded-full bg-blue-100/60 blur-3xl" />
         <div className="pointer-events-none absolute -right-32 bottom-0 h-72 w-72 rounded-full bg-cyan-100/60 blur-3xl" />
 
         <div className="relative mx-auto grid max-w-7xl items-center gap-10 px-6 py-16 lg:grid-cols-2 lg:px-8 lg:py-24">
-
           {/* HERO TEXT */}
           <div
             className={`transition-all duration-1000 ${
@@ -137,7 +137,6 @@ export default function HomePage() {
                 : "translate-y-8 opacity-0"
             }`}
           >
-
             <div
               className={`mb-5 inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-600 transition-all duration-700 ${
                 pageLoaded
@@ -162,7 +161,6 @@ export default function HomePage() {
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-
               <Link
                 href="/planner"
                 className="rounded-xl bg-blue-600 px-7 py-4 text-center font-bold text-white shadow-sm transition duration-300 hover:-translate-y-1 hover:bg-blue-700 hover:shadow-lg active:translate-y-0"
@@ -176,7 +174,6 @@ export default function HomePage() {
               >
                 Explore Lombok
               </Link>
-
             </div>
           </div>
 
@@ -188,9 +185,7 @@ export default function HomePage() {
                 : "translate-y-8 scale-95 opacity-0"
             }`}
           >
-
             <div className="group relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-blue-400 to-cyan-400 shadow-2xl">
-
               {images["Pantai Tanjung Aan"] ? (
                 <img
                   src={images["Pantai Tanjung Aan"]}
@@ -216,24 +211,20 @@ export default function HomePage() {
                   Pantai Tanjung Aan
                 </h2>
               </div>
-
             </div>
           </div>
-
         </div>
       </section>
 
       {/* POPULAR DESTINATIONS */}
       <section className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
-
         <div
-          className={`mb-10 flex flex-col justify-between gap-4 md:flex-row md:items-end transition-all duration-700 ${
+          className={`mb-10 flex flex-col justify-between gap-4 transition-all duration-700 md:flex-row md:items-end ${
             pageLoaded
               ? "translate-y-0 opacity-100"
               : "translate-y-8 opacity-0"
           }`}
         >
-
           <div>
             <p className="font-semibold text-blue-600">
               Discover Lombok
@@ -255,11 +246,9 @@ export default function HomePage() {
           >
             View All →
           </Link>
-
         </div>
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-
           {destinations.map((destination, index) => (
             <div
               key={destination.name}
@@ -270,9 +259,7 @@ export default function HomePage() {
                   : "none",
               }}
             >
-
               <div className="relative h-64 overflow-hidden bg-gradient-to-br from-blue-400 to-cyan-400">
-
                 {images[destination.name] ? (
                   <img
                     src={images[destination.name]}
@@ -290,7 +277,6 @@ export default function HomePage() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent transition duration-500 group-hover:from-black/80" />
 
                 <div className="absolute bottom-0 left-0 right-0 p-5">
-
                   <p className="text-xs font-semibold uppercase tracking-wide text-white/80">
                     Lombok
                   </p>
@@ -310,21 +296,16 @@ export default function HomePage() {
                       →
                     </span>
                   </Link>
-
                 </div>
               </div>
-
             </div>
           ))}
-
         </div>
       </section>
 
       {/* FEATURES */}
       <section className="overflow-hidden bg-gray-50">
-
         <div className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
-
           <div
             className={`mx-auto max-w-2xl text-center transition-all duration-700 ${
               pageLoaded
@@ -332,7 +313,6 @@ export default function HomePage() {
                 : "translate-y-8 opacity-0"
             }`}
           >
-
             <p className="font-semibold text-blue-600">
               Why FunTravel?
             </p>
@@ -340,11 +320,9 @@ export default function HomePage() {
             <h2 className="mt-2 text-3xl font-bold md:text-4xl">
               Everything You Need for Lombok
             </h2>
-
           </div>
 
           <div className="mt-12 grid gap-6 md:grid-cols-3">
-
             {/* FEATURE 1 */}
             <div
               className="group rounded-3xl bg-white p-8 shadow-sm transition-all duration-500 hover:-translate-y-2 hover:shadow-xl"
@@ -415,15 +393,12 @@ export default function HomePage() {
                 recommendations and itinerary ideas.
               </p>
             </div>
-
           </div>
-
         </div>
       </section>
 
       {/* CTA */}
       <section className="mx-auto max-w-7xl px-6 py-20 lg:px-8">
-
         <div
           className={`relative overflow-hidden rounded-[2rem] bg-blue-600 p-10 text-center text-white transition-all duration-1000 md:p-16 ${
             pageLoaded
@@ -431,13 +406,11 @@ export default function HomePage() {
               : "translate-y-8 scale-95 opacity-0"
           }`}
         >
-
           {/* Decorative circles */}
           <div className="pointer-events-none absolute -left-20 -top-20 h-48 w-48 rounded-full bg-white/10" />
           <div className="pointer-events-none absolute -bottom-24 -right-16 h-56 w-56 rounded-full bg-white/10" />
 
           <div className="relative">
-
             <div className="inline-block text-5xl transition duration-500 hover:scale-125">
               🌴
             </div>
@@ -457,20 +430,14 @@ export default function HomePage() {
             >
               Start Planning →
             </Link>
-
           </div>
         </div>
-
       </section>
 
       {/* FOOTER */}
       <footer className="border-t border-gray-100 bg-white">
-
         <div className="mx-auto flex max-w-7xl flex-col gap-5 px-6 py-8 md:flex-row md:items-center md:justify-between lg:px-8">
-
-          <div
-            className="transition duration-500 hover:translate-x-1"
-          >
+          <div className="transition duration-500 hover:translate-x-1">
             <p className="text-xl font-bold text-blue-600">
               FunTravel
             </p>
@@ -481,7 +448,6 @@ export default function HomePage() {
           </div>
 
           <div className="flex flex-wrap gap-6 text-sm text-gray-500">
-
             <Link
               href="/"
               className="transition duration-300 hover:-translate-y-0.5 hover:text-blue-600"
@@ -509,11 +475,15 @@ export default function HomePage() {
             >
               Explore Lombok
             </Link>
-
           </div>
-
         </div>
       </footer>
+
+      {/* ===================================================== */}
+      {/* CUSTOMER SERVICE */}
+      {/* ===================================================== */}
+
+      <CustomerService />
 
       {/* ANIMATION CSS */}
       <style jsx>{`
@@ -529,7 +499,6 @@ export default function HomePage() {
           }
         }
       `}</style>
-
     </main>
   );
 }

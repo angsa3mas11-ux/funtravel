@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/Navbar";
+import CustomerService from "@/components/CustomerService";
 
 type Destination = {
   id: string;
@@ -1324,6 +1325,12 @@ export default function ExplorePage() {
           </div>
         </div>
       </footer>
+
+      {/* =========================
+          CUSTOMER SERVICE
+      ========================= */}
+
+      <CustomerService />
 
       {/* =========================
           ANIMATIONS

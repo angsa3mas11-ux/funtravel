@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import CustomerService from "../../components/CustomerService";
 
 type User = {
   id: string;
@@ -30,9 +31,21 @@ export default function LoginPage() {
 
   function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
     setError("");
 
     const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password;
+
+    if (!cleanEmail) {
+      setError("Silakan masukkan email.");
+      return;
+    }
+
+    if (!cleanPassword) {
+      setError("Silakan masukkan password.");
+      return;
+    }
 
     const savedUsers = localStorage.getItem("funtravel_users");
 
@@ -46,7 +59,13 @@ export default function LoginPage() {
     let users: User[] = [];
 
     try {
-      users = JSON.parse(savedUsers);
+      const parsedUsers = JSON.parse(savedUsers);
+
+      if (!Array.isArray(parsedUsers)) {
+        throw new Error("Invalid users data");
+      }
+
+      users = parsedUsers;
     } catch {
       setError("Data akun bermasalah. Silakan register kembali.");
       return;
@@ -54,8 +73,8 @@ export default function LoginPage() {
 
     const user = users.find(
       (item) =>
-        item.email.toLowerCase() === cleanEmail &&
-        item.password === password
+        item.email?.trim().toLowerCase() === cleanEmail &&
+        item.password === cleanPassword
     );
 
     if (!user) {
@@ -65,29 +84,35 @@ export default function LoginPage() {
 
     setIsLoggingIn(true);
 
+    /*
+     * Password sengaja TIDAK disimpan
+     * ke current user.
+     */
+    const currentUser = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+    };
+
     localStorage.setItem("funtravel_logged_in", "true");
 
     localStorage.setItem(
       "funtravel_current_user",
-      JSON.stringify({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-      })
+      JSON.stringify(currentUser)
     );
 
     window.setTimeout(() => {
       router.push("/dashboard");
-    }, 700);
+    }, 500);
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 flex items-center justify-center px-6 py-12 overflow-hidden">
+    <main className="flex min-h-screen items-center justify-center overflow-hidden bg-gray-50 px-6 py-12">
       <div className="w-full max-w-md">
 
         {/* Header */}
         <div
-          className="text-center mb-8"
+          className="mb-8 text-center"
           style={{
             animationName: pageLoaded ? "fadeUp" : "none",
             animationDuration: "0.7s",
@@ -103,18 +128,18 @@ export default function LoginPage() {
             FunTravel
           </Link>
 
-          <h1 className="text-3xl font-bold mt-8">
+          <h1 className="mt-8 text-3xl font-bold">
             Welcome back
           </h1>
 
-          <p className="text-gray-500 mt-2">
-            Sign in to continue your travel journey.
+          <p className="mt-2 text-gray-500">
+            Sign in to continue your Lombok journey.
           </p>
         </div>
 
         {/* Login Card */}
         <div
-          className="bg-white rounded-3xl border border-gray-100 shadow-lg p-8"
+          className="rounded-3xl border border-gray-100 bg-white p-8 shadow-lg"
           style={{
             animationName: pageLoaded ? "scaleIn" : "none",
             animationDuration: "0.7s",
@@ -128,7 +153,8 @@ export default function LoginPage() {
           {/* Error */}
           {error && (
             <div
-              className="mb-5 bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 text-sm"
+              role="alert"
+              className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"
               style={{
                 animationName: "shake",
                 animationDuration: "0.4s",
@@ -156,17 +182,29 @@ export default function LoginPage() {
                 opacity: pageLoaded ? undefined : 0,
               }}
             >
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
+              <label
+                htmlFor="email"
+                className="mb-2 block text-sm font-semibold text-gray-700"
+              >
                 Email
               </label>
 
               <input
+                id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+
+                  if (error) {
+                    setError("");
+                  }
+                }}
                 placeholder="you@example.com"
+                autoComplete="email"
                 required
-                className="w-full px-4 py-3.5 rounded-xl border border-gray-200 outline-none transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:shadow-md"
+                disabled={isLoggingIn}
+                className="w-full rounded-xl border border-gray-200 px-4 py-3.5 outline-none transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:shadow-md disabled:cursor-not-allowed disabled:bg-gray-50"
               />
             </div>
 
@@ -181,17 +219,29 @@ export default function LoginPage() {
                 opacity: pageLoaded ? undefined : 0,
               }}
             >
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
+              <label
+                htmlFor="password"
+                className="mb-2 block text-sm font-semibold text-gray-700"
+              >
                 Password
               </label>
 
               <input
+                id="password"
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+
+                  if (error) {
+                    setError("");
+                  }
+                }}
                 placeholder="Your password"
+                autoComplete="current-password"
                 required
-                className="w-full px-4 py-3.5 rounded-xl border border-gray-200 outline-none transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:shadow-md"
+                disabled={isLoggingIn}
+                className="w-full rounded-xl border border-gray-200 px-4 py-3.5 outline-none transition-all duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:shadow-md disabled:cursor-not-allowed disabled:bg-gray-50"
               />
             </div>
 
@@ -209,11 +259,11 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={isLoggingIn}
-                className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold transition-all duration-200 hover:bg-blue-700 hover:-translate-y-1 hover:shadow-lg active:translate-y-0 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
+                className="w-full rounded-xl bg-blue-600 py-4 font-bold text-white transition-all duration-200 hover:-translate-y-1 hover:bg-blue-700 hover:shadow-lg active:translate-y-0 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isLoggingIn ? (
                   <span className="flex items-center justify-center gap-2">
-                    <span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
                     Signing in...
                   </span>
                 ) : (
@@ -226,7 +276,7 @@ export default function LoginPage() {
 
           {/* Register */}
           <div
-            className="text-center mt-6"
+            className="mt-6 text-center"
             style={{
               animationName: pageLoaded ? "fadeUp" : "none",
               animationDuration: "0.6s",
@@ -251,6 +301,9 @@ export default function LoginPage() {
         </div>
       </div>
 
+      {/* Customer Service */}
+      <CustomerService />
+
       {/* Animations */}
       <style jsx>{`
         @keyframes fadeUp {
@@ -258,6 +311,7 @@ export default function LoginPage() {
             opacity: 0;
             transform: translateY(25px);
           }
+
           to {
             opacity: 1;
             transform: translateY(0);
@@ -269,6 +323,7 @@ export default function LoginPage() {
             opacity: 0;
             transform: scale(0.96) translateY(15px);
           }
+
           to {
             opacity: 1;
             transform: scale(1) translateY(0);
